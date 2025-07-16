@@ -1,40 +1,130 @@
-# SPDX-FileCopyrightText: © 2024 Tiny Tapeout
-# SPDX-License-Identifier: Apache-2.0
-
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles
+from cocotb.triggers import ClockCycles, RisingEdge
+import numpy as np
 
+def get_expected_matmul(A, B):
+    """
+    Args: lists A, B as flattened row-major matrices
+    """
+    return (np.array(A).reshape(2, 2) @ np.array(B).reshape(2, 2)).flatten().tolist()
+
+async def load_matrix(dut, matrix, sel):
+    """
+    Load a 2x2 matrix into the DUT.
+    
+    Args:
+        dut: Device Under Test
+        matrix: list of 4 values (row-major)
+        sel: 0 for matrix A, 1 for matrix B
+    """
+    for i in range(4):
+        dut.ui_in.value = matrix[i]
+        dut.uio_in.value = (sel << 1) | (i << 2) | 1  # load_en=1, load_sel_ab=sel, load_index
+        await RisingEdge(dut.clk)
+        dut.uio_in.value = 0
+        await RisingEdge(dut.clk)
+
+async def read_signed_output(dut):
+    # Wait for first outputs to propagate
+    await ClockCycles(dut.clk, 3)
+    results = []
+    for i in range(4):
+        dut.uio_in.value = 0
+        await ClockCycles(dut.clk, 1)
+        val_unsigned = dut.uo_out.value.integer
+        val_signed = val_unsigned if val_unsigned < 128 else val_unsigned - 256
+        results.append(val_signed)
+        dut._log.info(f"Read C[{i//2}][{i%2}] = {val_signed}")
+    return results
 
 @cocotb.test()
 async def test_project(dut):
     dut._log.info("Start")
-
-    # Set the clock period to 10 us (100 KHz)
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
 
     # Reset
-    dut._log.info("Reset")
     dut.ena.value = 1
     dut.ui_in.value = 0
     dut.uio_in.value = 0
     dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
+    await ClockCycles(dut.clk, 5)
     dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 5)
 
-    dut._log.info("Test project behavior")
+    # ------------------------------
+    # STEP 1: Load matrix A
+    # A = [[1, 2],
+    #      [3, 4]]
+    A = [1, 2, 3, 4]  # row-major
 
-    # Set the input values you want to test
-    dut.ui_in.value = 20
-    dut.uio_in.value = 30
+    # ------------------------------
+    # STEP 2: Load matrix B
+    # B = [[5, 6],
+    #      [7, 8]]
+    B = [5, 6, 7, 8]  # row-major: [B00, B01, B10, B11]
+    
+    await load_matrix(dut, A, sel=0)
+    await load_matrix(dut, B, sel=1)
 
-    # Wait for one clock cycle to see the output values
-    await ClockCycles(dut.clk, 1)
+    # ------------------------------
+    # STEP 4: Read outputs
+    expected = get_expected_matmul(A, B)
+    results = []
 
-    # The following assersion is just an example of how to check the output values.
-    # Change it to match the actual expected output of your module:
-    assert dut.uo_out.value == 50
+    results = await read_signed_output(dut)
 
-    # Keep testing the module by changing the input values, waiting for
-    # one or more clock cycles, and asserting the expected output values.
+    # ------------------------------
+    # STEP 5: Check results
+    for i in range(4):
+        assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
+
+    dut._log.info("Test 1 passed!")
+
+    #######################################
+    ##### TEST RUN 2 - CHECK CLEARING #####
+    
+    # ------------------------------
+    # STEP 1: Load matrices
+
+    A = [5, 6, 7, 8]  # row-major
+    B = [9, -12, 1, 2]  # row-major: [B00, B01, B10, B11]
+
+    await load_matrix(dut, A, sel=0)
+    await load_matrix(dut, B, sel=1)
+
+    # ------------------------------
+    # STEP 4: Read outputs
+    expected = get_expected_matmul(A, B)
+    results = []
+
+    results = await read_signed_output(dut)
+
+    # ------------------------------
+    # STEP 5: Check results
+    for i in range(4):
+        assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
+
+    dut._log.info("Test 2 passed!")
+
+    #########################################
+    ##### TEST RUN 3 - CHECK SIGNED OPS #####
+
+    A = [5, -6, 7, 8]  # row-major
+    B = [1, 2, 3, -4]  # row-major: [B00, B01, B10, B11]
+
+    await load_matrix(dut, A, sel=0)
+    await load_matrix(dut, B, sel=1)
+
+    expected = get_expected_matmul(A, B)
+    results = []
+
+    # Wait for systolic array to compute
+    
+    results = await read_signed_output(dut)
+
+    for i in range(4):
+        assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
+
+    dut._log.info("Test 3 passed!")
