@@ -11,7 +11,7 @@ You can also include images in this folder and reference them in the markdown. E
 
 This project is a small-scale matrix multiplier inspired by the Tensor Processing Unit (TPU), an AI inference ASIC made by Google.
 
-It multiplies 2x2 matrices, each of which contain 1-byte (8-bit) elements. It does so in a systolic array circuit.
+It multiplies 2x2 matrices, each of which contain signed, 1-byte (8-bit) elements. It does so in a systolic array circuit, where flow of data is facilitated through the connections between a grid of 4 Multiply-Add-Accumulate (MAC) Processing Elements (PEs).
 
 To store inputs prior to computation, it contains 2 matrices in memory registers, which occupy a total of 8 bytes.
 
