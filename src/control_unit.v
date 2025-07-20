@@ -89,7 +89,7 @@ module control_unit (
                     if (load_en) begin
                         mat_elems_loaded <= mat_elems_loaded + 1;
                         mem_load_mat <= 1; // enable writes into memory
-                        mem_addr <= mat_elems_loaded + 1; // Decode instruction
+                        mem_addr <= mat_elems_loaded + 1;
                     end else begin
                         mem_load_mat <= 0;
                         mem_addr <= 0;
