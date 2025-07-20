@@ -10,16 +10,16 @@ module systolic_array_2x2 #(
     input wire [WIDTH-1:0] b_data0,
     input wire [WIDTH-1:0] b_data1,
 
-    output wire [2*WIDTH-1:0] c00,
-    output wire [2*WIDTH-1:0] c01,
-    output wire [2*WIDTH-1:0] c10,
-    output wire [2*WIDTH-1:0] c11
+    output wire [WIDTH-1:0] c00,
+    output wire [WIDTH-1:0] c01,
+    output wire [WIDTH-1:0] c10,
+    output wire [WIDTH-1:0] c11
 );
 
     // Internal signals between PEs
     wire [WIDTH-1:0] a_wire [0:1][0:2];
     wire [WIDTH-1:0] b_wire [0:2][0:1];
-    wire [15:0] c_array [0:1][0:1];
+    wire [7:0] c_array [0:1][0:1];
 
     // Input loading at top-left
     assign a_wire[0][0] = a_data0;

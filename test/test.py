@@ -39,6 +39,39 @@ async def read_signed_output(dut):
     return results
 
 @cocotb.test()
+async def test_numeric_limits(dut):
+    dut._log.info("Start")
+    clock = Clock(dut.clk, 10, units="us")
+    cocotb.start_soon(clock.start())
+
+    # Reset
+    dut.ena.value = 1
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 5)
+    dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 5)
+
+    A = [5, -6, 7, 8]  # row-major
+    B = [8, 9, 6, -7]  # row-major: [B00, B01, B10, B11]
+
+    await load_matrix(dut, A, sel=0)
+    await load_matrix(dut, B, sel=1)
+
+    expected = get_expected_matmul(A, B)
+    results = []
+
+    # Wait for systolic array to compute
+    
+    results = await read_signed_output(dut)
+
+    for i in range(4):
+        assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
+
+    dut._log.info("Test passed!")
+
+@cocotb.test()
 async def test_project(dut):
     dut._log.info("Start")
     clock = Clock(dut.clk, 10, units="us")

@@ -7,16 +7,14 @@ module control_unit (
 
     // Memory interface  
     output reg mem_load_mat,
-    output reg [2:0] mem_addr, // Adjusted to 3 bits for matrix and element selection
+    output reg [2:0] mem_addr,
 
     // MMU feeding control
     output reg mmu_en,
-    output reg [2:0] mmu_cycle // Renamed from mmu_cycle, adjusted to 3 bits
+    output reg [2:0] mmu_cycle
 );
 
-    // Instruction decoding
-    wire load_en = instrn;          // Bit 0: load enable
-    // Bit 7: ignored as specified
+    wire load_en = instrn; 
 
     // STATES
     localparam [1:0] S_IDLE                  = 2'b00;
@@ -59,7 +57,7 @@ module control_unit (
                 end
             end
 
-			default begin
+			default: begin
 				next_state = S_IDLE;
 			end
         endcase
@@ -76,13 +74,13 @@ module control_unit (
             mem_addr <= 0;
         end else begin
             state <= next_state;
+            mem_addr <= 0;
             case (state)
                 S_IDLE: begin
                     mat_elems_loaded <= 0;
                     mmu_cycle <= 0;
                     mmu_en <= 0;
                     mem_load_mat <= load_en;
-                    mem_addr <= 0;
                 end
 
                 S_LOAD_MATS: begin
@@ -92,7 +90,6 @@ module control_unit (
                         mem_addr <= mat_elems_loaded + 1;
                     end else begin
                         mem_load_mat <= 0;
-                        mem_addr <= 0;
                     end
 
                     if (mat_elems_loaded == 3'b111) begin 
@@ -104,20 +101,14 @@ module control_unit (
                 S_MMU_FEED_COMPUTE_WB: begin
                     mmu_en <= 1;
                     mem_load_mat <= 0;
-                    mem_addr <= 0;
 					mmu_cycle <= mmu_cycle + 1;
                 end
 				
-				default begin
+				default: begin
 					mat_elems_loaded <= 0;
                     mmu_cycle <= 0;
                     mmu_en <= 0;
                     mem_load_mat <= load_en;
-                    if (load_en) begin
-                        mem_addr <= 0;
-                    end else begin
-                        mem_addr <= 0;
-                    end
 				end
             endcase
         end
