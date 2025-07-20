@@ -22,7 +22,7 @@ module systolic_array_2x2 #(
     // Internal signals between PEs
     wire [WIDTH-1:0] a_wire [0:1][0:2];
     wire [WIDTH-1:0] b_wire [0:2][0:1];
-    wire [7:0] c_array [0:1][0:1];
+    wire signed [WIDTH-1:0] c_array [0:1][0:1];
 
     // Input loading at top-left
     assign a_wire[0][0] = a_data0;
@@ -34,11 +34,10 @@ module systolic_array_2x2 #(
     generate
         for (i = 0; i < 2; i = i + 1) begin : row
             for (j = 0; j < 2; j = j + 1) begin : col
-                PE #(.WIDTH(8)) pe_inst (
+                PE #(.WIDTH(WIDTH)) pe_inst (
                     .clk(clk),
                     .rst(rst),
                     .clear(clear),
-                    .transpose_en(transpose),
                     .relu_en(activation),
                     .a_in(a_wire[i][j]),
                     .b_in(b_wire[i][j]),
@@ -50,8 +49,10 @@ module systolic_array_2x2 #(
         end
     endgenerate
 
-    assign c00 = c_array[0][0];
-    assign c01 = c_array[0][1];
-    assign c10 = c_array[1][0];
-    assign c11 = c_array[1][1];
+    // Combinational logic for output with optional ReLU
+    assign c00 = activation ? (c_array[0][0] < 0 ? 0 : c_array[0][0]) : c_array[0][0];
+    assign c01 = activation ? (c_array[0][1] < 0 ? 0 : c_array[0][1]) : c_array[0][1];
+    assign c10 = activation ? (c_array[1][0] < 0 ? 0 : c_array[1][0]) : c_array[1][0];
+    assign c11 = activation ? (c_array[1][1] < 0 ? 0 : c_array[1][1]) : c_array[1][1];
+
 endmodule

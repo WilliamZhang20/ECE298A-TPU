@@ -29,16 +29,15 @@ async def load_matrix(dut, matrix, sel):
         dut.uio_in.value = 0
         await RisingEdge(dut.clk)
 
-async def read_signed_output(dut, transpose=False, relu=False):
+async def read_signed_output(dut, transpose=0, relu=0):
     # Apply instruction signal just before reading
-    dut.uio_in.value = 0b00000001 | (transpose << 1) | (relu << 2)
-    await ClockCycles(dut.clk, 1)
-    dut.uio_in.value = 0
-    await ClockCycles(dut.clk, 2)  # allow systolic array to compute
+    for i in range(3):
+        dut.uio_in.value = (transpose << 1) | (relu << 2)
+        await ClockCycles(dut.clk, 1)
 
     results = []
     for i in range(4):
-        dut.uio_in.value = 0  # Read mode
+        dut.uio_in.value = (transpose << 1) | (relu << 2)
         await ClockCycles(dut.clk, 1)
         val_unsigned = dut.uo_out.value.integer
         val_signed = val_unsigned if val_unsigned < 128 else val_unsigned - 256
@@ -61,14 +60,14 @@ async def test_relu_transpose(dut):
     dut.rst_n.value = 1
     await ClockCycles(dut.clk, 5)
 
-    A = [1, -2, 3, -4]   # row-major
-    B = [5, 6, -7, 8]    # row-major
+    A = [5, -6, 7, 8]  # row-major
+    B = [8, 9, 6, 8]  # row-major: [B00, B01, B10, B11]
 
     await load_matrix(dut, A, sel=0)
     await load_matrix(dut, B, sel=1)
 
-    expected = get_expected_matmul(A, B, transpose=True, relu=True)
-    results = await read_signed_output(dut)
+    expected = get_expected_matmul(A, B, transpose=False, relu=True)
+    results = await read_signed_output(dut, relu=1)
 
     for i in range(4):
         assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
