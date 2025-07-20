@@ -11,7 +11,7 @@ module mmu_feeder (
     input wire [7:0] input0, input1, input2, input3,
 
     /* systolic array -> feeder */
-    input wire signed [7:0] c00, c01, c10, c11,
+    input wire [7:0] c00, c01, c10, c11,
 
     /* feeder -> mmu */
     output reg clear,

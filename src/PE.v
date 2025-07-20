@@ -8,8 +8,8 @@ module PE #(
     input wire signed [WIDTH-1:0] a_in,
     input wire signed [WIDTH-1:0] b_in,
 
-    output reg [WIDTH-1:0] a_out,
-    output reg [WIDTH-1:0] b_out,
+    output reg signed [WIDTH-1:0] a_out,
+    output reg signed [WIDTH-1:0] b_out,
 
     output reg signed [WIDTH-1:0] c_out
 );
