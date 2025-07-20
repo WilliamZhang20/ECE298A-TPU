@@ -7,7 +7,7 @@ def get_expected_matmul(A, B, transpose=False, relu=False):
     A_mat = np.array(A).reshape(2, 2)
     B_mat = np.array(B).reshape(2, 2)
     if transpose:
-        A_mat = A_mat.T
+        B_mat = B_mat.T
     result = A_mat @ B_mat
     if relu:
         result = np.maximum(result, 0)
@@ -67,7 +67,21 @@ async def test_relu_transpose(dut):
     await load_matrix(dut, B, sel=1)
 
     expected = get_expected_matmul(A, B, transpose=False, relu=True)
-    results = await read_signed_output(dut, relu=1)
+    results = await read_signed_output(dut, transpose=0, relu=1)
+
+    for i in range(4):
+        assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
+
+    dut._log.info("First part passed")
+
+    A = [1, 2, 3, 4]
+    B = [5, 6, 7, 8]
+
+    await load_matrix(dut, A, sel=0)
+    await load_matrix(dut, B, sel=1)
+
+    expected = get_expected_matmul(A, B, transpose=True, relu=True)
+    results = await read_signed_output(dut, transpose=1, relu=1)
 
     for i in range(4):
         assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"

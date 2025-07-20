@@ -6,6 +6,8 @@ module mmu_feeder (
     input wire en,
     input wire [2:0] mmu_cycle,
 
+    input wire transpose,
+
     /* Memory module interface */
     input wire [7:0] weight0, weight1, weight2, weight3,
     input wire [7:0] input0, input1, input2, input3,
@@ -55,8 +57,6 @@ module mmu_feeder (
                 end else begin
                     output_count <= 0;
                 end
-
-                // Input assignments based on mmu_cycle
                 case (mmu_cycle)
                     3'b000: begin
                         a_data0 <= weight0;
@@ -65,8 +65,13 @@ module mmu_feeder (
                     3'b001: begin
                         a_data0 <= weight1;
                         a_data1 <= weight2;
-                        b_data0 <= input2;
-                        b_data1 <= input1;
+                        if (transpose) begin
+                            b_data0 <= input1;
+                            b_data1 <= input2;
+                        end else begin
+                            b_data0 <= input2;
+                            b_data1 <= input1;
+                        end
                     end
                     3'b010: begin
                         a_data1 <= weight3;
