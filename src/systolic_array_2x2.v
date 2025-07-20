@@ -5,6 +5,9 @@ module systolic_array_2x2 #(
     input wire rst,
     input wire clear,
 
+    input wire transpose,
+    input wire activation,
+
     input wire [WIDTH-1:0] a_data0,
     input wire [WIDTH-1:0] a_data1,
     input wire [WIDTH-1:0] b_data0,
@@ -35,6 +38,8 @@ module systolic_array_2x2 #(
                     .clk(clk),
                     .rst(rst),
                     .clear(clear),
+                    .transpose_en(transpose),
+                    .relu_en(activation),
                     .a_in(a_wire[i][j]),
                     .b_in(b_wire[i][j]),
                     .a_out(a_wire[i][j+1]),

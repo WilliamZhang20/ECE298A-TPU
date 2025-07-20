@@ -17,6 +17,8 @@ module tt_um_tpu (
 );
 
     wire instruction = uio_in[0];
+    wire transpose = uio_in[1];
+    wire activation = uio_in[2];
 
     wire compute_en; // internal signal
     reg clear; // reset of PEs only
@@ -60,6 +62,8 @@ module tt_um_tpu (
         .clk(clk),
         .rst(~rst_n),
         .clear(clear),
+        .transpose(transpose),
+        .activation(activation),
         .a_data0(a_data0),
         .a_data1(a_data1),
         .b_data0(b_data0),
@@ -94,6 +98,6 @@ module tt_um_tpu (
     assign uio_out = {done, 7'b0};
     assign uio_oe = 8'b10000000;
 
-    wire _unused = &{ena, uio_in[7:1]};
+    wire _unused = &{ena, uio_in[7:3]};
 
 endmodule
