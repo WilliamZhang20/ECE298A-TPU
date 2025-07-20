@@ -49,8 +49,8 @@ pinout:
 
   # Bidirectional pins
   uio[0]: "LOAD_EN (input)"
-  uio[1]: "Unused"
-  uio[2]: "Unused"
+  uio[1]: "TRANSPOSE (input)"
+  uio[2]: "ACTIVATION (input)"
   uio[3]: "Unused"
   uio[4]: "Unused"
   uio[5]: "Unused"

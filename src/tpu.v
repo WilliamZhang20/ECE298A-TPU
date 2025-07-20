@@ -17,6 +17,8 @@ module tt_um_tpu (
 );
 
     wire instruction = uio_in[0];
+    wire transpose = uio_in[1];
+    wire activation = uio_in[2];
 
     wire compute_en; // internal signal
     reg clear; // reset of PEs only
@@ -28,7 +30,7 @@ module tt_um_tpu (
     wire [7:0] weight0, weight1, weight2, weight3;
     wire [7:0] input0, input1, input2, input3;
 
-    wire [7:0] outputs [0:3]; // raw accumulations (16-bit)
+    wire [11:0] outputs [0:3]; // raw accumulations (16-bit)
     wire [7:0] out_data; // sent to CPU
     // Ports of the systolic Array
     wire [7:0] a_data0, b_data0, a_data1, b_data1;
@@ -60,6 +62,7 @@ module tt_um_tpu (
         .clk(clk),
         .rst(~rst_n),
         .clear(clear),
+        .activation(activation),
         .a_data0(a_data0),
         .a_data1(a_data1),
         .b_data0(b_data0),
@@ -75,6 +78,7 @@ module tt_um_tpu (
         .rst(~rst_n),
         .en(compute_en),
         .mmu_cycle(mmu_cycle),
+        .transpose(transpose),
         .weight0(weight0), .weight1(weight1), .weight2(weight2), .weight3(weight3),
         .input0(input0), .input1(input1), .input2(input2), .input3(input3),
         .c00(outputs[0]), 
@@ -94,6 +98,6 @@ module tt_um_tpu (
     assign uio_out = {done, 7'b0};
     assign uio_oe = 8'b10000000;
 
-    wire _unused = &{ena, uio_in[7:1]};
+    wire _unused = &{ena, uio_in[7:3]};
 
 endmodule

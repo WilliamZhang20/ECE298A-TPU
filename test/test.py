@@ -3,11 +3,19 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 import numpy as np
 
-def get_expected_matmul(A, B):
-    """
-    Args: lists A, B as flattened row-major matrices
-    """
-    return (np.array(A).reshape(2, 2) @ np.array(B).reshape(2, 2)).flatten().tolist()
+def saturate_to_s8(x):
+    """Clamp value to 8-bit signed range [-128, 127]."""
+    return max(-128, min(127, int(x)))
+
+def get_expected_matmul(A, B, transpose=False, relu=False):
+    A_mat = np.array(A).reshape(2, 2)
+    B_mat = np.array(B).reshape(2, 2)
+    if transpose:
+        B_mat = B_mat.T
+    result = A_mat @ B_mat
+    if relu:
+        result = np.maximum(result, 0)
+    return [saturate_to_s8(val) for val in result.flatten().tolist()]
 
 async def load_matrix(dut, matrix, sel):
     """
@@ -25,18 +33,64 @@ async def load_matrix(dut, matrix, sel):
         dut.uio_in.value = 0
         await RisingEdge(dut.clk)
 
-async def read_signed_output(dut):
-    # Wait for first outputs to propagate
-    await ClockCycles(dut.clk, 3)
+async def read_signed_output(dut, transpose=0, relu=0):
+    # Apply instruction signal just before reading
+    for i in range(3):
+        dut.uio_in.value = (transpose << 1) | (relu << 2)
+        await ClockCycles(dut.clk, 1)
+
     results = []
     for i in range(4):
-        dut.uio_in.value = 0
+        dut.uio_in.value = (transpose << 1) | (relu << 2)
         await ClockCycles(dut.clk, 1)
         val_unsigned = dut.uo_out.value.integer
         val_signed = val_unsigned if val_unsigned < 128 else val_unsigned - 256
         results.append(val_signed)
         dut._log.info(f"Read C[{i//2}][{i%2}] = {val_signed}")
     return results
+
+@cocotb.test()
+async def test_relu_transpose(dut):
+    dut._log.info("Start")
+    clock = Clock(dut.clk, 10, units="us")
+    cocotb.start_soon(clock.start())
+
+    # Reset
+    dut.ena.value = 1
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 5)
+    dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 5)
+
+    A = [5, -6, 7, 8]  # row-major
+    B = [8, 9, 6, 8]  # row-major: [B00, B01, B10, B11]
+
+    await load_matrix(dut, A, sel=0)
+    await load_matrix(dut, B, sel=1)
+
+    expected = get_expected_matmul(A, B, transpose=False, relu=True)
+    results = await read_signed_output(dut, transpose=0, relu=1)
+
+    for i in range(4):
+        assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
+
+    dut._log.info("First part passed")
+
+    A = [1, 2, 3, 4]
+    B = [5, 6, 7, 8]
+
+    await load_matrix(dut, A, sel=0)
+    await load_matrix(dut, B, sel=1)
+
+    expected = get_expected_matmul(A, B, transpose=True, relu=True)
+    results = await read_signed_output(dut, transpose=1, relu=1)
+
+    for i in range(4):
+        assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
+
+    dut._log.info("ReLU + Transpose test passed!")
 
 @cocotb.test()
 async def test_numeric_limits(dut):
@@ -54,7 +108,25 @@ async def test_numeric_limits(dut):
     await ClockCycles(dut.clk, 5)
 
     A = [5, -6, 7, 8]  # row-major
-    B = [8, 9, 6, -7]  # row-major: [B00, B01, B10, B11]
+    B = [8, 12, 9, -7]  # row-major: [B00, B01, B10, B11]
+
+    await load_matrix(dut, A, sel=0)
+    await load_matrix(dut, B, sel=1)
+
+    expected = get_expected_matmul(A, B)
+    results = []
+
+    # Wait for systolic array to compute
+    
+    results = await read_signed_output(dut)
+
+    for i in range(4):
+        assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
+
+    dut._log.info("Passed large positive values")
+
+    A = [5, -6, 7, 8]  # row-major
+    B = [8, -12, 9, -7]  # row-major: [B00, B01, B10, B11]
 
     await load_matrix(dut, A, sel=0)
     await load_matrix(dut, B, sel=1)

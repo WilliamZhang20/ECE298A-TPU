@@ -6,12 +6,14 @@ module mmu_feeder (
     input wire en,
     input wire [2:0] mmu_cycle,
 
+    input wire transpose,
+
     /* Memory module interface */
     input wire [7:0] weight0, weight1, weight2, weight3,
     input wire [7:0] input0, input1, input2, input3,
 
     /* systolic array -> feeder */
-    input wire [7:0] c00, c01, c10, c11,
+    input wire signed [11:0] c00, c01, c10, c11,
 
     /* feeder -> mmu */
     output reg clear,
@@ -30,6 +32,18 @@ module mmu_feeder (
 
     // Output counter for selecting c_out
     reg [1:0] output_count;
+
+    function [7:0] saturate_to_s8;
+        input signed [11:0] val;
+        begin
+            if (val > 127)
+                saturate_to_s8 = 8'sd127;
+            else if (val < -128)
+                saturate_to_s8 = -8'sd128;
+            else
+                saturate_to_s8 = val[7:0];
+        end
+    endfunction
 
     // Sequential logic for control and data outputs
     always @(posedge clk or posedge rst) begin
@@ -55,8 +69,6 @@ module mmu_feeder (
                 end else begin
                     output_count <= 0;
                 end
-
-                // Input assignments based on mmu_cycle
                 case (mmu_cycle)
                     3'b000: begin
                         a_data0 <= weight0;
@@ -65,8 +77,13 @@ module mmu_feeder (
                     3'b001: begin
                         a_data0 <= weight1;
                         a_data1 <= weight2;
-                        b_data0 <= input2;
-                        b_data1 <= input1;
+                        if (transpose) begin
+                            b_data0 <= input1;
+                            b_data1 <= input2;
+                        end else begin
+                            b_data0 <= input2;
+                            b_data1 <= input1;
+                        end
                     end
                     3'b010: begin
                         a_data1 <= weight3;
@@ -86,10 +103,10 @@ module mmu_feeder (
         host_outdata = 8'b0; // Default to avoid latch
         if (en) begin
             case (output_count)
-                2'b00: host_outdata = c00;
-                2'b01: host_outdata = c01;
-                2'b10: host_outdata = c10;
-                2'b11: host_outdata = c11;
+                2'b00: host_outdata = saturate_to_s8(c00);
+                2'b01: host_outdata = saturate_to_s8(c01);
+                2'b10: host_outdata = saturate_to_s8(c10);
+                2'b11: host_outdata = saturate_to_s8(c11);
                 default: host_outdata = 8'b0;
             endcase
         end
