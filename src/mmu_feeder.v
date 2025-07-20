@@ -11,7 +11,7 @@ module mmu_feeder (
     input wire [7:0] input0, input1, input2, input3,
 
     /* systolic array -> feeder */
-    input wire signed [15:0] c00, c01, c10, c11,
+    input wire signed [7:0] c00, c01, c10, c11,
 
     /* feeder -> mmu */
     output reg clear,
@@ -86,18 +86,10 @@ module mmu_feeder (
         host_outdata = 8'b0; // Default to avoid latch
         if (en) begin
             case (output_count)
-                2'b00: host_outdata = (c00[15] && c00[15:8] != 8'hFF) ? -8'sd128 :
-                                      (!c00[15] && c00[15:8] != 8'h00) ? 8'sd127 :
-                                      c00[7:0];
-                2'b01: host_outdata = (c01[15] && c01[15:8] != 8'hFF) ? -8'sd128 :
-                                      (!c01[15] && c01[15:8] != 8'h00) ? 8'sd127 :
-                                      c01[7:0];
-                2'b10: host_outdata = (c10[15] && c10[15:8] != 8'hFF) ? -8'sd128 :
-                                      (!c10[15] && c10[15:8] != 8'h00) ? 8'sd127 :
-                                      c10[7:0];
-                2'b11: host_outdata = (c11[15] && c11[15:8] != 8'hFF) ? -8'sd128 :
-                                      (!c11[15] && c11[15:8] != 8'h00) ? 8'sd127 :
-                                      c11[7:0];
+                2'b00: host_outdata = c00;
+                2'b01: host_outdata = c01;
+                2'b10: host_outdata = c10;
+                2'b11: host_outdata = c11;
                 default: host_outdata = 8'b0;
             endcase
         end
