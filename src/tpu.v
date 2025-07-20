@@ -30,7 +30,7 @@ module tt_um_tpu (
     wire [7:0] weight0, weight1, weight2, weight3;
     wire [7:0] input0, input1, input2, input3;
 
-    wire [7:0] outputs [0:3]; // raw accumulations (16-bit)
+    wire [11:0] outputs [0:3]; // raw accumulations (16-bit)
     wire [7:0] out_data; // sent to CPU
     // Ports of the systolic Array
     wire [7:0] a_data0, b_data0, a_data1, b_data1;

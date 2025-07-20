@@ -3,6 +3,10 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 import numpy as np
 
+def saturate_to_s8(x):
+    """Clamp value to 8-bit signed range [-128, 127]."""
+    return max(-128, min(127, int(x)))
+
 def get_expected_matmul(A, B, transpose=False, relu=False):
     A_mat = np.array(A).reshape(2, 2)
     B_mat = np.array(B).reshape(2, 2)
@@ -11,7 +15,7 @@ def get_expected_matmul(A, B, transpose=False, relu=False):
     result = A_mat @ B_mat
     if relu:
         result = np.maximum(result, 0)
-    return result.flatten().tolist()
+    return [saturate_to_s8(val) for val in result.flatten().tolist()]
 
 async def load_matrix(dut, matrix, sel):
     """
@@ -104,7 +108,25 @@ async def test_numeric_limits(dut):
     await ClockCycles(dut.clk, 5)
 
     A = [5, -6, 7, 8]  # row-major
-    B = [8, 9, 6, -7]  # row-major: [B00, B01, B10, B11]
+    B = [8, 12, 9, -7]  # row-major: [B00, B01, B10, B11]
+
+    await load_matrix(dut, A, sel=0)
+    await load_matrix(dut, B, sel=1)
+
+    expected = get_expected_matmul(A, B)
+    results = []
+
+    # Wait for systolic array to compute
+    
+    results = await read_signed_output(dut)
+
+    for i in range(4):
+        assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
+
+    dut._log.info("Passed large positive values")
+
+    A = [5, -6, 7, 8]  # row-major
+    B = [8, -12, 9, -7]  # row-major: [B00, B01, B10, B11]
 
     await load_matrix(dut, A, sel=0)
     await load_matrix(dut, B, sel=1)

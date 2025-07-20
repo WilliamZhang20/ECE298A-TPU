@@ -13,7 +13,7 @@ module mmu_feeder (
     input wire [7:0] input0, input1, input2, input3,
 
     /* systolic array -> feeder */
-    input wire [7:0] c00, c01, c10, c11,
+    input wire signed [11:0] c00, c01, c10, c11,
 
     /* feeder -> mmu */
     output reg clear,
@@ -32,6 +32,18 @@ module mmu_feeder (
 
     // Output counter for selecting c_out
     reg [1:0] output_count;
+
+    function [7:0] saturate_to_s8;
+        input signed [11:0] val;
+        begin
+            if (val > 127)
+                saturate_to_s8 = 8'sd127;
+            else if (val < -128)
+                saturate_to_s8 = -8'sd128;
+            else
+                saturate_to_s8 = val[7:0];
+        end
+    endfunction
 
     // Sequential logic for control and data outputs
     always @(posedge clk or posedge rst) begin
@@ -91,10 +103,10 @@ module mmu_feeder (
         host_outdata = 8'b0; // Default to avoid latch
         if (en) begin
             case (output_count)
-                2'b00: host_outdata = c00;
-                2'b01: host_outdata = c01;
-                2'b10: host_outdata = c10;
-                2'b11: host_outdata = c11;
+                2'b00: host_outdata = saturate_to_s8(c00);
+                2'b01: host_outdata = saturate_to_s8(c01);
+                2'b10: host_outdata = saturate_to_s8(c10);
+                2'b11: host_outdata = saturate_to_s8(c11);
                 default: host_outdata = 8'b0;
             endcase
         end
