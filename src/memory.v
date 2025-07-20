@@ -19,7 +19,6 @@ module memory (
                 sram[i] <= 8'b0;
             end
         end else if (write_en) begin
-            $display("Loading %d", in_data);
             sram[addr] <= in_data;
         end
 
