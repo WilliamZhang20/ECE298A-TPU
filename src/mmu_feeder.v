@@ -11,7 +11,7 @@ module mmu_feeder (
     input wire [7:0] input0, input1, input2, input3,
 
     /* systolic array -> feeder */
-    input wire signed [15:0] c00, c01, c10, c11,
+    input wire [7:0] c00, c01, c10, c11,
 
     /* feeder -> mmu */
     output reg clear,
@@ -25,7 +25,29 @@ module mmu_feeder (
     output reg [7:0] host_outdata
 );
 
+<<<<<<< HEAD
     // Done signal for output phase
+=======
+    wire [7:0] weights [0:3];
+    wire [7:0] inputs [0:3];
+    wire [7:0] c_out [0:3];
+
+    assign weights[0] = weight0;
+    assign weights[1] = weight1;
+    assign weights[2] = weight2;
+    assign weights[3] = weight3;
+
+    assign inputs[0] = input0;
+    assign inputs[1] = input1;
+    assign inputs[2] = input2;
+    assign inputs[3] = input3;
+
+    assign c_out[0] = c00;
+    assign c_out[1] = c01;
+    assign c_out[2] = c10;
+    assign c_out[3] = c11;
+
+>>>>>>> 29f8ba429b77d603255adec93a3e590b7cfed28a
     assign done = en && (mmu_cycle >= 3'b010) && (mmu_cycle <= 3'b101);
 
     // Output counter for selecting c_out
