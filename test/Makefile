@@ -7,7 +7,7 @@ TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
 
 TIMESTAMP = $(shell TZ=US/Eastern date +%Y%m%d_%H:%M:%S)
-WAVES_ROOT = $(PWD)/
+WAVES_ROOT = $(PWD)
 COMPILE_ARGS += -DTIMESTAMP=\"$(TIMESTAMP)\"
 
 PROJECT_SOURCES = tpu.v \
