@@ -5,8 +5,13 @@
 SIM ?= icarus
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
+
+TIMESTAMP = $(shell TZ=US/Eastern date +%Y%m%d_%H:%M:%S)
+WAVES_ROOT = $(PWD)
+COMPILE_ARGS += -DTIMESTAMP=\"$(TIMESTAMP)\"
+
 PROJECT_SOURCES = tpu.v \
- 				  	systolic_array_2x2.v \
+					systolic_array_2x2.v \
 					control_unit.v \
 					PE.v \
 					mmu_feeder.v \
@@ -38,12 +43,47 @@ endif
 # Allow sharing configuration between design and testbench via `include`:
 COMPILE_ARGS 		+= -I$(SRC_DIR)
 
-# Include the testbench sources:
-VERILOG_SOURCES += $(PWD)/tb.v
-TOPLEVEL = tb
+.PHONY: all test-top test-memory test-systolic-array
 
-# MODULE is the basename of the Python test file
-MODULE = test
+all:
+	$(MAKE) test-top
+	$(MAKE) test-memory
+	$(MAKE) test-systolic-array
+
+test-top:
+	$(MAKE) clean
+	$(MAKE) sim \
+		TOPLEVEL=tb \
+		MODULE=test_tpu \
+		VERILOG_SOURCES="$(WAVES_ROOT)/tpu/tb.v $(addprefix $(SRC_DIR)/,tpu.v systolic_array_2x2.v PE.v mmu_feeder.v control_unit.v memory.v)" \
+		PYTHONPATH=$(WAVES_ROOT)/tpu \
+		WAVES_DIR=$(WAVES_ROOT)/tpu/wave \
+		COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/tpu/wave/tpu_tb_$(TIMESTAMP).vcd\""'
+
+test-systolic-array:
+	$(MAKE) clean
+	$(MAKE) sim \
+        TOPLEVEL=systolic_array_tb \
+        MODULE=test_systolic_array \
+        VERILOG_SOURCES="$(WAVES_ROOT)/systolic_array/systolic_array_tb.v $(SRC_DIR)/systolic_array_2x2.v $(SRC_DIR)/PE.v" \
+        PYTHONPATH=$(WAVES_ROOT)/systolic_array \
+        WAVES_DIR=$(WAVES_ROOT)/systolic_array/wave \
+        COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/systolic_array/wave/systolic_array_tb_$(TIMESTAMP).vcd\""'
+
+test-memory:
+	$(MAKE) clean
+	$(MAKE) sim \
+		TOPLEVEL=memory_tb \
+		MODULE=test_memory \
+		VERILOG_SOURCES="$(WAVES_ROOT)/memory/memory_tb.v $(SRC_DIR)/memory.v" \
+		PYTHONPATH=$(WAVES_ROOT)/memory \
+		WAVES_DIR=$(WAVES_ROOT)/memory/wave \
+		COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/memory/wave/memory_tb_$(TIMESTAMP).vcd\""'
+
+# Phony target for cleaning up
+.PHONY: clean
+clean::
+	rm -rf sim_build* results.xml
 
 # include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim
