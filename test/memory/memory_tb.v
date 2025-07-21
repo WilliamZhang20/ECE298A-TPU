@@ -1,7 +1,7 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
-module memory_tb;
+module memory_tb ();
 
 	// Dump the signals to a VCD file. You can view it with gtkwave or surfer.
 	initial begin
@@ -11,6 +11,7 @@ module memory_tb;
 		$dumpfile("memory_tb.vcd");
 `endif
 		$dumpvars(0, memory_tb);
+		#1;
 	end
 
 	// Inputs
@@ -26,23 +27,19 @@ module memory_tb;
 
 	// Instantiate the memory module
 	memory dut (
-`ifdef GL_TEST
-      .VPWR(VPWR),
-      .VGND(VGND),
-`endif
-			.clk(clk),
-			.rst(rst),
-			.write_en(write_en),
-			.addr(addr),
-			.in_data(in_data),
-			.weight0(weight0),
-			.weight1(weight1),
-			.weight2(weight2),
-			.weight3(weight3),
-			.input0(input0),
-			.input1(input1),
-			.input2(input2),
-			.input3(input3)
+		.clk(clk),
+		.rst(rst),
+		.write_en(write_en),
+		.addr(addr),
+		.in_data(in_data),
+		.weight0(weight0),
+		.weight1(weight1),
+		.weight2(weight2),
+		.weight3(weight3),
+		.input0(input0),
+		.input1(input1),
+		.input2(input2),
+		.input3(input3)
 	);
 
 endmodule

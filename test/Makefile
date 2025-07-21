@@ -60,6 +60,16 @@ test-top:
 		WAVES_DIR=$(WAVES_ROOT)/tpu/wave \
 		COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/tpu/wave/tpu_tb_$(TIMESTAMP).vcd\""'
 
+test-systolic-array:
+	$(MAKE) clean
+	$(MAKE) sim \
+        TOPLEVEL=systolic_array_tb \
+        MODULE=test_systolic_array \
+        VERILOG_SOURCES="$(WAVES_ROOT)/systolic_array/systolic_array_tb.v $(SRC_DIR)/systolic_array_2x2.v $(SRC_DIR)/PE.v" \
+        PYTHONPATH=$(WAVES_ROOT)/systolic_array \
+        WAVES_DIR=$(WAVES_ROOT)/systolic_array/wave \
+        COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/systolic_array/wave/systolic_array_tb_$(TIMESTAMP).vcd\""'
+
 test-memory:
 	$(MAKE) clean
 	$(MAKE) sim \
