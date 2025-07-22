@@ -62,7 +62,7 @@ module mmu_feeder (
             output_count <= 0;
             if (en) begin
                 clear <= 0;
-
+                $display("mmu cycle %d, output count %d", mmu_cycle, output_count);
                 // Update output_count during output phase
                 if (mmu_cycle >= 3) begin
                     output_count <= output_count + 1;

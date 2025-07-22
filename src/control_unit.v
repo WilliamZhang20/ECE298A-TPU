@@ -21,6 +21,21 @@ module control_unit (
     reg [1:0] state, next_state;
     reg [2:0] mat_elems_loaded;
 
+    function [2:0] permuted_mem_addr;
+        input [2:0] idx;
+        case (idx)
+            3'd0: permuted_mem_addr = 3'd0;
+            3'd1: permuted_mem_addr = 3'd4;
+            3'd2: permuted_mem_addr = 3'd1;
+            3'd3: permuted_mem_addr = 3'd2;
+            3'd4: permuted_mem_addr = 3'd5;
+            3'd5: permuted_mem_addr = 3'd6;
+            3'd6: permuted_mem_addr = 3'd3;
+            3'd7: permuted_mem_addr = 3'd7;
+            default: permuted_mem_addr = 3'd0;
+        endcase
+    endfunction
+
     // Next state logic
     always @(*) begin
         next_state = state;
@@ -78,19 +93,19 @@ module control_unit (
                     mmu_en <= 0;
                     if (load_en) begin
                         mat_elems_loaded <= mat_elems_loaded + 1;
-                        mem_addr <= mat_elems_loaded + 1;
+                        mem_addr <= permuted_mem_addr(mat_elems_loaded + 1);
                     end
                 end
 
                 S_LOAD_MATS: begin
                     if (load_en) begin
                         mat_elems_loaded <= mat_elems_loaded + 1;
-                        mem_addr <= mat_elems_loaded + 1;
+                        mem_addr <= permuted_mem_addr(mat_elems_loaded + 1);
                     end
 
-                    if (mat_elems_loaded == 3'b101) begin
+                    if (mat_elems_loaded == 3'b100) begin
                         mmu_en <= 1;
-                    end else if (mat_elems_loaded >= 3'b110) begin
+                    end else if (mat_elems_loaded >= 3'b101) begin
                         mmu_en <= 1;
                         mmu_cycle <= mmu_cycle + 1;
                         if (mat_elems_loaded == 3'b111) begin 

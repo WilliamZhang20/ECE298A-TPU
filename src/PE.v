@@ -23,6 +23,7 @@ module PE #(
             b_out <= 0;
             c_out <= 0;
         end else begin
+            $display("%d, %d, %d", c_out, a_in, b_in);
             a_out <= a_in;
             b_out <= b_in;
 

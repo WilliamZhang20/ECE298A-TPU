@@ -3,6 +3,24 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 import numpy as np
 
+def permute_matrices_order(A, B):
+    """
+    Reorders A and B matrices for loading based on desired interleaved pattern:
+    [a00, b00, a01, a10, b01, b10, a11, b11]
+    
+    A and B are 4-element lists in row-major order.
+    """
+    assert len(A) == 4 and len(B) == 4, "Both matrices must be 2x2 in row-major order"
+
+    # Indices: A[0]=a00, A[1]=a01, A[2]=a10, A[3]=a11
+    #          B[0]=b00, B[1]=b01, B[2]=b10, B[3]=b11
+    return [
+        A[0], B[0],  # a00, b00
+        A[1], A[2],  # a01, a10
+        B[1], B[2],  # b01, b10
+        A[3], B[3]   # a11, b11
+    ]
+
 def saturate_to_s8(x):
     """Clamp value to 8-bit signed range [-128, 127]."""
     return max(-128, min(127, int(x)))
@@ -17,26 +35,25 @@ def get_expected_matmul(A, B, transpose=False, relu=False):
         result = np.maximum(result, 0)
     return [saturate_to_s8(val) for val in result.flatten().tolist()]
 
-async def load_matrix(dut, matrix, sel, transpose=0, relu=0):
+async def load_matrices(dut, A, B, transpose=0, relu=0):
     """
-    Load a 2x2 matrix into the DUT.
-    
-    Args:
-        dut: Device Under Test
-        matrix: list of 4 values (row-major)
-        sel: 0 for matrix A, 1 for matrix B
+    Load two 2x2 matrices into the DUT using the custom 8-cycle pattern.
+
+    Arguments:
+        dut: cocotb DUT handle
+        A: list of 4 values (row-major)
+        B: list of 4 values (row-major)
     """
-    for i in range(4):
-        dut.ui_in.value = matrix[i]
-        dut.uio_in.value = (transpose << 1) | (relu << 2) | 1  # load_en=1, load_sel_ab=sel, load_index
+    combined = permute_matrices_order(A, B)
+
+    for i, val in enumerate(combined):
+        # Load enable = 1, sel = 0 for A or 1 for B depending on index
+        sel = 0 if i in [0, 2, 3, 6] else 1  # index positions for A values
+        dut.ui_in.value = val
+        dut.uio_in.value = (transpose << 1) | (relu << 2) | 1
         await RisingEdge(dut.clk)
 
 async def read_signed_output(dut, transpose=0, relu=0):
-    # Apply instruction signal just before reading
-    for i in range(1):
-        dut.uio_in.value = (transpose << 1) | (relu << 2)
-        await ClockCycles(dut.clk, 1)
-
     results = []
     for i in range(4):
         dut.uio_in.value = (transpose << 1) | (relu << 2)
@@ -65,8 +82,7 @@ async def test_relu_transpose(dut):
     A = [5, -6, 7, 8]  # row-major
     B = [8, 9, 6, 8]  # row-major: [B00, B01, B10, B11]
 
-    await load_matrix(dut, A, sel=0, transpose=0, relu=1)
-    await load_matrix(dut, B, sel=1, transpose=0, relu=1)
+    await load_matrices(dut, A, B, transpose=0, relu=1)
 
     expected = get_expected_matmul(A, B, transpose=False, relu=True)
     results = await read_signed_output(dut, transpose=0, relu=1)
@@ -79,8 +95,7 @@ async def test_relu_transpose(dut):
     A = [1, 2, 3, 4]
     B = [5, 6, 7, 8]
 
-    await load_matrix(dut, A, sel=0, transpose=1, relu=1)
-    await load_matrix(dut, B, sel=1, transpose=1, relu=1)
+    await load_matrices(dut, A, B, transpose=1, relu=1)
 
     expected = get_expected_matmul(A, B, transpose=True, relu=True)
     results = await read_signed_output(dut, transpose=1, relu=1)
@@ -108,8 +123,7 @@ async def test_numeric_limits(dut):
     A = [5, -6, 7, 8]  # row-major
     B = [8, 12, 9, -7]  # row-major: [B00, B01, B10, B11]
 
-    await load_matrix(dut, A, sel=0)
-    await load_matrix(dut, B, sel=1)
+    await load_matrices(dut, A, B)
 
     expected = get_expected_matmul(A, B)
     results = []
@@ -125,9 +139,8 @@ async def test_numeric_limits(dut):
 
     A = [5, -6, 7, 8]  # row-major
     B = [8, -12, 9, -7]  # row-major: [B00, B01, B10, B11]
-
-    await load_matrix(dut, A, sel=0)
-    await load_matrix(dut, B, sel=1)
+    
+    await load_matrices(dut, A, B)
 
     expected = get_expected_matmul(A, B)
     results = []
@@ -168,8 +181,7 @@ async def test_project(dut):
     #      [7, 8]]
     B = [5, 6, 7, 8]  # row-major: [B00, B01, B10, B11]
     
-    await load_matrix(dut, A, sel=0)
-    await load_matrix(dut, B, sel=1)
+    await load_matrices(dut, A, B)
 
     # ------------------------------
     # STEP 4: Read outputs
@@ -194,8 +206,7 @@ async def test_project(dut):
     A = [79, -10, 7, 8]  # row-major
     B = [2, 6, 5, 8]  # row-major: [B00, B01, B10, B11]
 
-    await load_matrix(dut, A, sel=0)
-    await load_matrix(dut, B, sel=1)
+    await load_matrices(dut, A, B)
 
     # ------------------------------
     # STEP 4: Read outputs
@@ -217,8 +228,7 @@ async def test_project(dut):
     A = [5, -6, 7, 8]  # row-major
     B = [1, 2, 3, -4]  # row-major: [B00, B01, B10, B11]
 
-    await load_matrix(dut, A, sel=0)
-    await load_matrix(dut, B, sel=1)
+    await load_matrices(dut, A, B)
 
     expected = get_expected_matmul(A, B)
     results = []
