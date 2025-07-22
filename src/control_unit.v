@@ -86,13 +86,18 @@ module control_unit (
                     if (load_en) begin
                         mat_elems_loaded <= mat_elems_loaded + 1;
                         mem_addr <= mat_elems_loaded + 1;
-                    end 
+                    end
 
-                    if (mat_elems_loaded == 3'b111) begin 
-                        mat_elems_loaded <= 0;
-                        mem_addr <= 0;
-						mmu_en <= 1;
-					end
+                    if (mat_elems_loaded == 3'b101) begin
+                        mmu_en <= 1;
+                    end else if (mat_elems_loaded >= 3'b110) begin
+                        mmu_en <= 1;
+                        mmu_cycle <= mmu_cycle + 1;
+                        if (mat_elems_loaded == 3'b111) begin 
+                            mat_elems_loaded <= 0;
+                            mem_addr <= 0;
+                        end
+                    end 
                 end
 
                 S_MMU_FEED_COMPUTE_WB: begin

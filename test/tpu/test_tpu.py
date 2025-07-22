@@ -17,7 +17,7 @@ def get_expected_matmul(A, B, transpose=False, relu=False):
         result = np.maximum(result, 0)
     return [saturate_to_s8(val) for val in result.flatten().tolist()]
 
-async def load_matrix(dut, matrix, sel):
+async def load_matrix(dut, matrix, sel, transpose=0, relu=0):
     """
     Load a 2x2 matrix into the DUT.
     
@@ -28,12 +28,12 @@ async def load_matrix(dut, matrix, sel):
     """
     for i in range(4):
         dut.ui_in.value = matrix[i]
-        dut.uio_in.value = (sel << 1) | (i << 2) | 1  # load_en=1, load_sel_ab=sel, load_index
+        dut.uio_in.value = (transpose << 1) | (relu << 2) | 1  # load_en=1, load_sel_ab=sel, load_index
         await RisingEdge(dut.clk)
 
 async def read_signed_output(dut, transpose=0, relu=0):
     # Apply instruction signal just before reading
-    for i in range(3):
+    for i in range(1):
         dut.uio_in.value = (transpose << 1) | (relu << 2)
         await ClockCycles(dut.clk, 1)
 
@@ -65,8 +65,8 @@ async def test_relu_transpose(dut):
     A = [5, -6, 7, 8]  # row-major
     B = [8, 9, 6, 8]  # row-major: [B00, B01, B10, B11]
 
-    await load_matrix(dut, A, sel=0)
-    await load_matrix(dut, B, sel=1)
+    await load_matrix(dut, A, sel=0, transpose=0, relu=1)
+    await load_matrix(dut, B, sel=1, transpose=0, relu=1)
 
     expected = get_expected_matmul(A, B, transpose=False, relu=True)
     results = await read_signed_output(dut, transpose=0, relu=1)
@@ -79,8 +79,8 @@ async def test_relu_transpose(dut):
     A = [1, 2, 3, 4]
     B = [5, 6, 7, 8]
 
-    await load_matrix(dut, A, sel=0)
-    await load_matrix(dut, B, sel=1)
+    await load_matrix(dut, A, sel=0, transpose=1, relu=1)
+    await load_matrix(dut, B, sel=1, transpose=1, relu=1)
 
     expected = get_expected_matmul(A, B, transpose=True, relu=True)
     results = await read_signed_output(dut, transpose=1, relu=1)
