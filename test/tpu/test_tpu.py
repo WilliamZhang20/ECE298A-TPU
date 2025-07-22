@@ -30,8 +30,6 @@ async def load_matrix(dut, matrix, sel):
         dut.ui_in.value = matrix[i]
         dut.uio_in.value = (sel << 1) | (i << 2) | 1  # load_en=1, load_sel_ab=sel, load_index
         await RisingEdge(dut.clk)
-        dut.uio_in.value = 0
-        await RisingEdge(dut.clk)
 
 async def read_signed_output(dut, transpose=0, relu=0):
     # Apply instruction signal just before reading
