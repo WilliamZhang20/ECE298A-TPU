@@ -50,7 +50,7 @@ async def read_signed_output(dut, transpose=0, relu=0):
 @cocotb.test()
 async def test_relu_transpose(dut):
     dut._log.info("Start")
-    clock = Clock(dut.clk, 10, units="us")
+    clock = Clock(dut.clk, 2, units="us")
     cocotb.start_soon(clock.start())
 
     # Reset
@@ -93,7 +93,7 @@ async def test_relu_transpose(dut):
 @cocotb.test()
 async def test_numeric_limits(dut):
     dut._log.info("Start")
-    clock = Clock(dut.clk, 10, units="us")
+    clock = Clock(dut.clk, 2, units="us")
     cocotb.start_soon(clock.start())
 
     # Reset
@@ -144,7 +144,7 @@ async def test_numeric_limits(dut):
 @cocotb.test()
 async def test_project(dut):
     dut._log.info("Start")
-    clock = Clock(dut.clk, 10, units="us")
+    clock = Clock(dut.clk, 2, units="us")
     cocotb.start_soon(clock.start())
 
     # Reset
