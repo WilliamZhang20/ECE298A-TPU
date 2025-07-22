@@ -3,18 +3,15 @@
 module control_unit (
     input wire clk,
     input wire rst,
-    input wire instrn,
+    input wire load_en,
 
     // Memory interface  
-    output reg mem_load_mat,
     output reg [2:0] mem_addr,
 
     // MMU feeding control
     output reg mmu_en,
     output reg [2:0] mmu_cycle
 );
-
-    wire load_en = instrn; 
 
     // STATES
     localparam [1:0] S_IDLE                  = 2'b00;
@@ -70,7 +67,6 @@ module control_unit (
             mat_elems_loaded <= 0;
             mmu_cycle <= 0;
             mmu_en <= 0;
-            mem_load_mat <= 0;
             mem_addr <= 0;
         end else begin
             state <= next_state;
@@ -80,27 +76,33 @@ module control_unit (
                     mat_elems_loaded <= 0;
                     mmu_cycle <= 0;
                     mmu_en <= 0;
-                    mem_load_mat <= load_en;
+                    if (load_en) begin
+                        mat_elems_loaded <= mat_elems_loaded + 1;
+                        mem_addr <= mat_elems_loaded + 1;
+                    end
                 end
 
                 S_LOAD_MATS: begin
                     if (load_en) begin
                         mat_elems_loaded <= mat_elems_loaded + 1;
-                        mem_load_mat <= 1; // enable writes into memory
                         mem_addr <= mat_elems_loaded + 1;
-                    end else begin
-                        mem_load_mat <= 0;
                     end
 
-                    if (mat_elems_loaded == 3'b111) begin 
-                        mat_elems_loaded <= 0;
-						mmu_en <= 1;
-					end
+                    if (mat_elems_loaded == 3'b101) begin
+                        mmu_en <= 1;
+                    end else if (mat_elems_loaded >= 3'b110) begin
+                        mmu_en <= 1;
+                        mmu_cycle <= mmu_cycle + 1;
+                        if (mat_elems_loaded == 3'b111) begin 
+                            mat_elems_loaded <= 0;
+                            mem_addr <= 0;
+                        end
+                    end 
                 end
 
                 S_MMU_FEED_COMPUTE_WB: begin
                     mmu_en <= 1;
-                    mem_load_mat <= 0;
+                    mem_addr <= 0;
 					mmu_cycle <= mmu_cycle + 1;
                 end
 				
@@ -108,7 +110,6 @@ module control_unit (
 					mat_elems_loaded <= 0;
                     mmu_cycle <= 0;
                     mmu_en <= 0;
-                    mem_load_mat <= load_en;
 				end
             endcase
         end

@@ -16,21 +16,20 @@ module tt_um_tpu (
     input  wire       rst_n
 );
 
-    wire instruction = uio_in[0];
+    wire load_en = uio_in[0];
     wire transpose = uio_in[1];
     wire activation = uio_in[2];
 
-    wire compute_en; // internal signal
+    wire mmu_en; // internal signal
     reg clear; // reset of PEs only
     wire [2:0] mem_addr; // 3-bit address for matrix and element selection
-    reg mem_load_mat;
-
+    
     wire [2:0] mmu_cycle; // compute/output cycle count, minimum 5, maximum ???
 
     wire [7:0] weight0, weight1, weight2, weight3;
     wire [7:0] input0, input1, input2, input3;
 
-    wire [11:0] outputs [0:3]; // raw accumulations (16-bit)
+    wire [11:0] outputs [0:3]; // raw accumulations (11-bit)
     wire [7:0] out_data; // sent to CPU
     // Ports of the systolic Array
     wire [7:0] a_data0, b_data0, a_data1, b_data1;
@@ -41,7 +40,7 @@ module tt_um_tpu (
     memory mem (
         .clk(clk),
         .rst(~rst_n),
-        .write_en(mem_load_mat),
+        .write_en(load_en),
         .addr(mem_addr),
         .in_data(ui_in),
         .weight0(weight0), .weight1(weight1), .weight2(weight2), .weight3(weight3),
@@ -51,10 +50,9 @@ module tt_um_tpu (
     control_unit central_ctrl (
         .clk(clk),
         .rst(~rst_n),
-        .instrn(instruction),
-        .mem_load_mat(mem_load_mat),
+        .load_en(load_en),
         .mem_addr(mem_addr),
-        .mmu_en(compute_en),
+        .mmu_en(mmu_en),
         .mmu_cycle(mmu_cycle)
     );
 
@@ -76,7 +74,7 @@ module tt_um_tpu (
     mmu_feeder compute_ctrl (
         .clk(clk),
         .rst(~rst_n),
-        .en(compute_en),
+        .en(mmu_en),
         .mmu_cycle(mmu_cycle),
         .transpose(transpose),
         .weight0(weight0), .weight1(weight1), .weight2(weight2), .weight3(weight3),
