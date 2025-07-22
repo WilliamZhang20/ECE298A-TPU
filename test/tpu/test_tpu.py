@@ -191,8 +191,8 @@ async def test_project(dut):
     # ------------------------------
     # STEP 1: Load matrices
 
-    A = [5, 6, 7, 8]  # row-major
-    B = [9, -12, 1, 2]  # row-major: [B00, B01, B10, B11]
+    A = [79, -10, 7, 8]  # row-major
+    B = [2, 6, 5, 8]  # row-major: [B00, B01, B10, B11]
 
     await load_matrix(dut, A, sel=0)
     await load_matrix(dut, B, sel=1)
