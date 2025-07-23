@@ -32,11 +32,6 @@ async def load_matrix(dut, matrix, sel, transpose=0, relu=0):
         await RisingEdge(dut.clk)
 
 async def read_signed_output(dut, transpose=0, relu=0):
-    # Apply instruction signal just before reading
-    for i in range(1):
-        dut.uio_in.value = (transpose << 1) | (relu << 2)
-        await ClockCycles(dut.clk, 1)
-
     results = []
     for i in range(4):
         dut.uio_in.value = (transpose << 1) | (relu << 2)

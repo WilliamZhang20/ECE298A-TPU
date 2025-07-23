@@ -4,7 +4,6 @@ module systolic_array_2x2 #(
     input wire clk,
     input wire rst,
     input wire clear,
-
     input wire activation,
 
     input wire [WIDTH-1:0] a_data0,

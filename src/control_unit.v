@@ -97,12 +97,12 @@ module control_unit (
                             mat_elems_loaded <= 0;
                             mem_addr <= 0;
                         end
-                    end 
+                    end
                 end
 
                 S_MMU_FEED_COMPUTE_WB: begin
-                    mmu_en <= 1;
                     mem_addr <= 0;
+                    mmu_en <= 1;
 					mmu_cycle <= mmu_cycle + 1;
                 end
 				
