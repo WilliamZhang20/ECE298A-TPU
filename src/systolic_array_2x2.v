@@ -4,7 +4,7 @@ module systolic_array_2x2 #(
     input wire clk,
     input wire rst,
     input wire clear,
-
+    input wire clk_en,
     input wire activation,
 
     input wire [WIDTH-1:0] a_data0,
@@ -37,6 +37,7 @@ module systolic_array_2x2 #(
                     .clk(clk),
                     .rst(rst),
                     .clear(clear),
+                    .clk_en(clk_en),
                     .a_in(a_wire[i][j]),
                     .b_in(b_wire[i][j]),
                     .a_out(a_wire[i][j+1]),

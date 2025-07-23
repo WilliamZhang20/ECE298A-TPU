@@ -16,7 +16,7 @@ module mmu_feeder (
     input wire signed [11:0] c00, c01, c10, c11,
 
     /* feeder -> mmu */
-    output reg clear,
+    output wire clear,
     output reg [7:0] a_data0,
     output reg [7:0] a_data1,
     output reg [7:0] b_data0,
@@ -29,6 +29,7 @@ module mmu_feeder (
 
     // Done signal for output phase
     assign done = en && (mmu_cycle >= 3'b010) && (mmu_cycle <= 3'b101);
+    assign clear = (mmu_cycle == 3'b110);
 
     // Output counter for selecting c_out
     reg [1:0] output_count;
@@ -48,21 +49,16 @@ module mmu_feeder (
     // Sequential logic for control and data outputs
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            clear <= 1;
             a_data0 <= 0;
             a_data1 <= 0;
             b_data0 <= 0;
             b_data1 <= 0;
             output_count <= 0;
         end else begin
-            a_data0 <= 0;
-            a_data1 <= 0;
-            b_data0 <= 0;
-            b_data1 <= 0;
             output_count <= 0;
             if (en) begin
-                clear <= 0;
                 $display("mmu cycle %d, output count %d", mmu_cycle, output_count);
+                $display("a_data0 %d, a_data1 %d, b_data0 %d, b_data1 %d", a_data0, a_data1, b_data0, b_data1);
                 // Update output_count during output phase
                 if (mmu_cycle >= 3) begin
                     output_count <= output_count + 1;
@@ -86,14 +82,36 @@ module mmu_feeder (
                         end
                     end
                     3'b010: begin
-                        a_data1 <= weight3;
+                        a_data0 <= 0;
+                        a_data1 <= 0;
+                        b_data0 <= 0;
                         b_data1 <= input3;
                     end
-                    // Other cycles (3'b011 to 3'b101) keep defaults (0)
-                    default: begin end
+                    3'b011: begin
+                        a_data0 <= 0;
+                        b_data1 <= input3;
+                        b_data0 <= 0;
+                        a_data1 <= weight3;
+                    end
+                    3'b100: begin
+                        a_data0 <= 0;
+                        b_data1 <= input3;
+                        b_data0 <= 0;
+                        a_data1 <= a_data1;
+                    end
+                    // Other cycles (3'b100 to 3'b101) keep defaults (0)
+                    default: begin 
+                        a_data0 <= 0;
+                        a_data1 <= 0;
+                        b_data0 <= 0;
+                        b_data1 <= 0;
+                    end
                 endcase
             end else begin
-                clear <= 1;
+                a_data0 <= 0;
+                a_data1 <= 0;
+                b_data0 <= 0;
+                b_data1 <= 0;
             end
         end
     end

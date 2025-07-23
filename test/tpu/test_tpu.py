@@ -18,7 +18,7 @@ def permute_matrices_order(A, B):
         A[0], B[0],  # a00, b00
         A[1], A[2],  # a01, a10
         B[1], B[2],  # b01, b10
-        A[3], B[3]   # a11, b11
+        B[3], A[3]   # b11, a11
     ]
 
 def saturate_to_s8(x):

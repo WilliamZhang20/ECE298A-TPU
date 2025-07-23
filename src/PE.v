@@ -4,6 +4,7 @@ module PE #(
     input wire clk,
     input wire rst,
     input wire clear,
+    input wire clk_en,
     input wire signed [WIDTH-1:0] a_in,
     input wire signed [WIDTH-1:0] b_in,
 
@@ -22,7 +23,7 @@ module PE #(
             a_out <= 0;
             b_out <= 0;
             c_out <= 0;
-        end else begin
+        end else if (clk_en) begin
             $display("%d, %d, %d", c_out, a_in, b_in);
             a_out <= a_in;
             b_out <= b_in;

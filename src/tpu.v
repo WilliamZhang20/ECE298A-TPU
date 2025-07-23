@@ -35,6 +35,7 @@ module tt_um_tpu (
     wire [7:0] a_data0, b_data0, a_data1, b_data1;
 
     wire done;
+    wire clk_en;
 
     // Module Instantiations
     memory mem (
@@ -53,13 +54,15 @@ module tt_um_tpu (
         .load_en(load_en),
         .mem_addr(mem_addr),
         .mmu_en(mmu_en),
-        .mmu_cycle(mmu_cycle)
+        .mmu_cycle(mmu_cycle),
+        .clk_en(clk_en)
     );
 
     systolic_array_2x2 mmu (
         .clk(clk),
         .rst(~rst_n),
         .clear(clear),
+        .clk_en(clk_en),
         .activation(activation),
         .a_data0(a_data0),
         .a_data1(a_data1),
