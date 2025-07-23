@@ -17,10 +17,10 @@ module mmu_feeder (
 
     /* feeder -> mmu */
     output wire clear,
-    output reg [7:0] a_data0,
-    output reg [7:0] a_data1,
-    output reg [7:0] b_data0,
-    output reg [7:0] b_data1,
+    output wire [7:0] a_data0,
+    output wire [7:0] a_data1,
+    output wire [7:0] b_data0,
+    output wire [7:0] b_data1,
 
     /* feeder -> rpi */
     output wire done,
@@ -46,72 +46,38 @@ module mmu_feeder (
         end
     endfunction
 
+    assign a_data0 = en ?
+                     (mmu_cycle == 3'd0) ? weight0 : 
+                     (mmu_cycle == 3'd1) ? weight1 : 0 : 0;
+
+    assign a_data1 = en ?
+                     (mmu_cycle == 3'd1) ? weight2 : 
+                     (mmu_cycle == 3'd2) ? weight3 : 0 : 0;
+
+    assign b_data0 = en ? 
+                     (mmu_cycle == 3'd0) ? input0 : 
+                     (mmu_cycle == 3'd1) ? 
+                     transpose ? input1 : input2 : 0 : 0;
+
+    assign b_data1 = en ?
+                     (mmu_cycle == 3'd1) ? 
+                     transpose ? input2 : input1 :
+                     (mmu_cycle == 3'd2) ? input3 : 0 : 0;
+
+
     // Sequential logic for control and data outputs
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            a_data0 <= 0;
-            a_data1 <= 0;
-            b_data0 <= 0;
-            b_data1 <= 0;
             output_count <= 0;
         end else begin
             output_count <= 0;
             if (en) begin
-                $display("mmu cycle %d, output count %d", mmu_cycle, output_count);
-                $display("a_data0 %d, a_data1 %d, b_data0 %d, b_data1 %d", a_data0, a_data1, b_data0, b_data1);
                 // Update output_count during output phase
-                if (mmu_cycle >= 3) begin
+                if (mmu_cycle >= 2) begin
                     output_count <= output_count + 1;
                 end else begin
                     output_count <= 0;
                 end
-                case (mmu_cycle)
-                    3'b000: begin
-                        a_data0 <= weight0;
-                        b_data0 <= input0;
-                    end
-                    3'b001: begin
-                        a_data0 <= weight1;
-                        a_data1 <= weight2;
-                        if (transpose) begin
-                            b_data0 <= input1;
-                            b_data1 <= input2;
-                        end else begin
-                            b_data0 <= input2;
-                            b_data1 <= input1;
-                        end
-                    end
-                    3'b010: begin
-                        a_data0 <= 0;
-                        a_data1 <= 0;
-                        b_data0 <= 0;
-                        b_data1 <= input3;
-                    end
-                    3'b011: begin
-                        a_data0 <= 0;
-                        b_data1 <= input3;
-                        b_data0 <= 0;
-                        a_data1 <= weight3;
-                    end
-                    3'b100: begin
-                        a_data0 <= 0;
-                        b_data1 <= input3;
-                        b_data0 <= 0;
-                        a_data1 <= a_data1;
-                    end
-                    // Other cycles (3'b100 to 3'b101) keep defaults (0)
-                    default: begin 
-                        a_data0 <= 0;
-                        a_data1 <= 0;
-                        b_data0 <= 0;
-                        b_data1 <= 0;
-                    end
-                endcase
-            end else begin
-                a_data0 <= 0;
-                a_data1 <= 0;
-                b_data0 <= 0;
-                b_data1 <= 0;
             end
         end
     end
