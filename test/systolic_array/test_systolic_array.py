@@ -32,7 +32,7 @@ async def test_systolic_array_basic(dut):
     matrix_B = [[5, 6], [7, 8]]
 
     weights = [matrix_A[0][0], matrix_A[0][1], matrix_A[1][0], matrix_A[1][1]]  # weight0..3
-    inputs = [matrix_B[0][0], matrix_B[1][0], matrix_B[0][1], matrix_B[1][1]]   # input0..3
+    inputs = [matrix_B[0][0], matrix_B[0][1], matrix_B[1][0], matrix_B[1][1]]   # input0..3
 
     # Drive cycle 0: mmu_cycle = 3'b000
     dut.a_data0.value = weights[0]  # weight0
@@ -44,8 +44,8 @@ async def test_systolic_array_basic(dut):
     # Drive cycle 1: mmu_cycle = 3'b001
     dut.a_data0.value = weights[1]  # weight1
     dut.a_data1.value = weights[2]  # weight2
-    dut.b_data1.value = inputs[2]   # input2 (not transposed)
-    dut.b_data0.value = inputs[1]   # input1
+    dut.b_data0.value = inputs[2]   # input2 (not transposed)
+    dut.b_data1.value = inputs[1]   # input1
     await RisingEdge(dut.clk)
 
     # Drive cycle 2: mmu_cycle = 3'b010
