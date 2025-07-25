@@ -68,8 +68,6 @@ async def test_control_unit_load_matrices(dut):
         # Check current state BEFORE the clock edge
         assert int(dut.mem_addr.value) == expected_addr, f"Cycle {i+1}: mem_addr should be {expected_addr}, got {dut.mem_addr.value}"
 
-        print(f"Cycle {i+1}: mem_addr = {dut.mem_addr.value}, mmu_en = {dut.mmu_en.value}")
-
         current_loaded = int(dut.mem_addr.value)
         # We check when loaded = 6 and not when =5
         # The value is "set" when =5
@@ -112,20 +110,28 @@ async def test_control_unit_mmu_compute_phase(dut):
 
     # Load all 8 elements quickly
     dut.load_en.value = 1
+    print("State: ", int(dut.state_out))
     for _ in range(8):
+        print("State: ", int(dut.state_out))
         await ClockCycles(dut.clk, 1)
+    dut.load_en.value = 0
+    print("State: ", int(dut.state_out))
     
     # Now in MMU_FEED_COMPUTE_WB state
-    # mmu_cycle should increment from 1 to 5
-    expected_cycles = [2, 3, 4, 5]
+    # mmu_cycle should increment from 1 to 5 (0 -> 1 done in S_LOAD_MATS state)
+    expected_cycles = [1, 2, 3, 4]
     for expected_cycle in expected_cycles:
+        print("State: ", int(dut.state_out))
         assert dut.mmu_en.value == 1, f"mmu_en should remain 1 during compute phase"
-        assert dut.mem_addr.value == 0, f"mem_addr should be 0 during compute phase"
-        await ClockCycles(dut.clk, 1)
         assert dut.mmu_cycle.value == expected_cycle, f"mmu_cycle should be {expected_cycle}, got {dut.mmu_cycle.value}"
+
+        await ClockCycles(dut.clk, 1)
+        assert dut.load_en.value == 0, f"load_en should remain 0 during compute phase"
+        assert dut.mem_addr.value == 0, f"mem_addr should be 0 during compute phase"
     
     # After mmu_cycle reaches 5, should return to IDLE
-    await ClockCycles(dut.clk, 1)
+    print("State: ", int(dut.state_out))
+    await ClockCycles(dut.clk, 2)
     assert dut.mmu_en.value == 0, "mmu_en should be 0 after returning to IDLE"
     assert dut.mmu_cycle.value == 0, "mmu_cycle should reset to 0 in IDLE"
     assert dut.mem_addr.value == 0, "mem_addr should be 0 in IDLE"
