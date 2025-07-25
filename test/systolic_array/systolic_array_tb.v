@@ -22,6 +22,7 @@ module systolic_array_tb;
   reg signed [7:0] a_data1;
   reg signed [7:0] b_data0;
   reg signed [7:0] b_data1;
+  reg [3:0] clk_en;
 
   // Outputs
   wire signed [11:0] c00;
@@ -34,6 +35,7 @@ module systolic_array_tb;
       .clk(clk),
       .rst(rst),
       .clear(clear),
+      .clk_en(clk_en),
       .activation(activation),
       .a_data0(a_data0),
       .a_data1(a_data1),

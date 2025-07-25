@@ -15,6 +15,7 @@ async def test_systolic_array_basic(dut):
     dut.rst.value = 1
     dut.clear.value = 1
     dut.activation.value = 0
+    dut.clk_en = 15
     dut.a_data0.value = 0
     dut.a_data1.value = 0
     dut.b_data0.value = 0
