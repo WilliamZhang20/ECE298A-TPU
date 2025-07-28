@@ -13,7 +13,7 @@ module mmu_feeder (
     input wire [7:0] input0, input1, input2, input3,
 
     /* systolic array -> feeder */
-    input wire signed [11:0] c00, c01, c10, c11,
+    input wire signed [15:0] c00, c01, c10, c11,
 
     /* feeder -> mmu */
     output wire clear,
@@ -35,7 +35,7 @@ module mmu_feeder (
     reg [1:0] output_count;
 
     function [7:0] saturate_to_s8;
-        input signed [11:0] val;
+        input signed [15:0] val;
         begin
             if (val > 127)
                 saturate_to_s8 = 8'sd127;
