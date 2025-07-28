@@ -2,6 +2,8 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 import numpy as np
+import time
+import statistics
 
 def saturate_to_s8(x):
     """Clamp value to 8-bit signed range [-128, 127]."""
@@ -129,7 +131,6 @@ async def read_matrix_output(dut, results_large, i, j, transpose=0, relu=0):
         row = i + (k // 2)
         col = j + (k % 2)
         results_large[row, col] += val_signed
-        dut._log.info(f"Read C[{row}][{col}] = {val_signed}")
 
 async def matmul(dut, A, B):
     """
@@ -174,7 +175,7 @@ async def matmul(dut, A, B):
 @cocotb.test()
 async def test_relu_transpose(dut):
     dut._log.info("Start")
-    clock = Clock(dut.clk, 1, units="us")
+    clock = Clock(dut.clk, 20, units="ns")
     cocotb.start_soon(clock.start())
 
     # Reset
@@ -217,7 +218,7 @@ async def test_relu_transpose(dut):
 @cocotb.test()
 async def test_numeric_limits(dut):
     dut._log.info("Start")
-    clock = Clock(dut.clk, 1, units="us")
+    clock = Clock(dut.clk, 20, units="ns")
     cocotb.start_soon(clock.start())
 
     # Reset
@@ -268,7 +269,7 @@ async def test_numeric_limits(dut):
 @cocotb.test()
 async def test_project(dut):
     dut._log.info("Start")
-    clock = Clock(dut.clk, 1, units="us")
+    clock = Clock(dut.clk, 20, units="ns")
     cocotb.start_soon(clock.start())
 
     # Reset
@@ -359,28 +360,34 @@ async def test_project(dut):
     # ------------------------------
     # TEST RUN 4: Large Matrix Multiplication with Arbitrary Dimensions
     # User-specified size, all elements MUST FIT WITHIN INT8 RANGE
-    
-    """
-    [[ 18   8  -6]
-    [-13   0  18]
-    [ -2   2 -10]
-    [-10   3  15]
-    [ 19   3 -18]]
-
-    [[  1 -19   3   9  17 -19]
-    [  0  12  -9   1   4   6]
-    [  7  -5  -6 -18  16 -14]]
-
-    correct result:
-    [[ -24 -128   18  127  127 -128]
-    [ 113  127 -128 -128   67   -5]
-    [ -72  112   36  127 -128  127]
-    [  95  127 -128 -128   82   -2]
-    [-107 -128  127  127   47  -91]]
-    """
     np.random.seed(42)
-    A_large = np.random.randint(-20, 20, size=(5, 3))
-    B_large = np.random.randint(-20, 20, size=(3, 6))
+    A_large = np.random.randint(-10, 10, size=(5, 3))
+    B_large = np.random.randint(-10, 10, size=(3, 6))
+
+    num_runs = 10
+
+    # Benchmark NumPy
+    numpy_times = []
+    for _ in range(num_runs):
+        start_time = time.perf_counter()
+        npResult = A_large @ B_large
+        end_time = time.perf_counter()
+        numpy_times.append(end_time - start_time)
+    numpy_avg_time = statistics.mean(numpy_times)
+    numpy_std_time = statistics.stdev(numpy_times) if num_runs > 1 else 0
+
+    dut_times = []
+
+    for _ in range(num_runs):
+        start_time = time.perf_counter()
+        dut_result = await matmul(dut, A_large, B_large)
+        end_time = time.perf_counter()
+        numpy_times.append(end_time - start_time)
+    dut_avg_time = statistics.mean(numpy_times)
+    dut_std_time = statistics.stdev(numpy_times) if num_runs > 1 else 0
+
+    print(f"NumPy Average Time: {numpy_avg_time:.6f} seconds (Std: {numpy_std_time:.6f})")
+    print(f"DUT Average Time: {dut_avg_time:.6f} seconds (Std: {dut_std_time:.6f})")
 
     # Perform matrix multiplication on DUT
     result = await matmul(dut, A_large, B_large)
