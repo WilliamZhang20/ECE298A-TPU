@@ -19,6 +19,8 @@ To orchestrate the flow of data between inputs, memory, and outputs, a control u
 
 Finally, to schedule the inputs and outputs to and from the systolic array, a feeder module closer to the matrix multiplier works with the control unit.
 
+## System Architecture
+
 ### The Processing Element
 
 |Signal Name        | Direction     | Blurb             |
@@ -60,11 +62,21 @@ Then, the PEs are instantiated using compile-time construct of `genvar`, in whic
 
 Block Diagram...
 
-### The Memory
-<!--Specify input/output signals, internal functionality, etc.
---->
+### Unified Memory
 
-### The Control Unit
+|Signal Name        | Direction | Width | Description                           |
+|-------------------|-----------|-------|---------------------------------------|
+|clk                | input     | 1     | System clock                          |
+|rst                | input     | 1     | Active-high reset                     |
+|write_en           | input     | 1     | Enable signal for matrix loading      |
+|addr               | input     | 3     | Memory address for matrix elements    |
+|in_data            | input     | 8     | Current input matrix                  |
+|weight[0,1,2,3]    | output    | 8     | Weight matrices                       |
+|input[0,1,2,3]     | output    | 8     | Input matrices                        |
+
+The unified memory module (`memory.v`) is a dedicated memory unit that stores input matrices (both general inputs and weights) for quick access to both values during computations. The unit supports synchronous reads and asynchronous writes.
+
+### Control Unit
 
 |Signal Name        | Direction | Width | Description                           |
 |-------------------|-----------|-------|---------------------------------------|
@@ -159,3 +171,5 @@ The module will assume an order of input of A matrix values and B matrix values,
 ## External hardware
 
 An external microcontroller will send signals over the chip interface, including the clock signal, which will alow it to coordinate I/O on clock edges.
+
+## Acknowledgements
