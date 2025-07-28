@@ -74,7 +74,7 @@ Block Diagram...
 |weight[0,1,2,3]    | output    | 8     | Weight matrices                       |
 |input[0,1,2,3]     | output    | 8     | Input matrices                        |
 
-The unified memory module (`memory.v`) is a dedicated memory unit that stores input matrices (both general inputs and weights) for quick access to both values during computations. The unit supports synchronous reads and asynchronous writes.
+The unified memory module (`memory.v`) is a dedicated memory unit that stores input matrices (both general inputs and weights) for quick access to both values during computations. The unit supports synchronous writes and asynchronous reads.
 
 ### Control Unit
 
