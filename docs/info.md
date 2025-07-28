@@ -140,6 +140,32 @@ The control unit interfaces with all major TPU components:
 This design ensures that matrix multiplication operations proceed automatically once initiated, with the control unit handling all timing dependencies and data flow coordination between the TPU's constituent modules.
 
 ### The Matrix Unit Feeder
+
+The Matrix Unit Feeder (or MMU feeder) is the middle-man module between the control unit and the computational unit (MMU), facilitating smooth data flow between the internal components of the TPU and outputs to the host. When enabled, its role is to either feed the expected matrix data from host --> mmu, or to direct computed matrix outputs from MMU --> host; this is decided based on the mmu_cycle defined by the control unit.
+
+|Signal Name        | Direction | Width | Description                           |
+|-------------------|-----------|-------|---------------------------------------|
+|clk                | input     | 1     | System clock                          |
+|rst                | input     | 1     | Active-high reset                     |
+|en                 | input     | 1     | Enable signal for MMU operations      |
+|mmu_cycle          | input     | 3     | Current cycle count for timing        |
+|weight[0,1,2,3]    | input     | 8     | Weight matrix from memory             |
+|input[0,1,2,3]     | input     | 8     | Input matrix from memory              |
+|c[00,01,10,11]     | input     | 8     | Computed element output from MMU      |
+|done               | output    | 1     | Signal to host that output is ready   |
+|host_outdata       | output    | 8     | Data register to output to host       |
+|a_data[0,1]        | output    | 8     | Output A to MMU for computation       |
+|b_data[0,1]        | output    | 8     | Output B to MMU for computation       |
+
+The weight and input matrices are taken from memory. The feeder will set the expected values of a_data0/1 and b_data0/1 depending on the value of mmu_cycle. During cycles 2-5, host_outdata is set to computed values from the MMU:
+- **Cycle 0**: host_outdata = xxx, a_data0 = weight[0], b_data0 = input[0], done = 0
+- **Cycle 1**: host_outdata = xxx, a_data0 = weight[1], a_data1 = weight[2], b_data0 = input[2], b_data1 = input[1], done = 0
+- **Cycle 2**: host_outdata = c00, a_data1 = weight[3], b_data1 = input[3], done = 1
+- **Cycle 3**: host_outdata = c01, done = 1
+- **Cycle 4**: host_outdata = c10, done = 1
+- **Cycle 5**: host_outdata = c11, done = 1, feeder goes idle until next round of inputs & computations
+
+For more details on timing relationships, see **Critical Timing Relationships** above, in the Control Unit section.
 <!--Specify input/output signals, internal functionality, etc.
 --->
 
