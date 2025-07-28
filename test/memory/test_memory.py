@@ -12,8 +12,7 @@ async def reset_dut(dut, ncycles: int = 2):
     dut.in_data.value = 0
     await ClockCycles(dut.clk, ncycles)
     dut.rst.value = 0
-    await ClockCycles(dut.clk, 1)  # give a cycle to settle
-
+    await ClockCycles(dut.clk, 1)
 
 async def write_addr(dut, addr: int, data: int):
     """Single-cycle write helper (write occurs on the rising edge)."""
@@ -22,15 +21,12 @@ async def write_addr(dut, addr: int, data: int):
     dut.in_data.value = data & 0xFF
     await ClockCycles(dut.clk, 1)
     dut.write_en.value = 0
-    # allow a cycle for outputs to reflect change (if combinational expose)
     await ClockCycles(dut.clk, 1)
-
 
 def snapshot_outputs(dut):
     weights = [int(getattr(dut, f"weight{i}").value) for i in range(4)]
     inputs = [int(getattr(dut, f"input{i}").value) for i in range(4)]
     return weights, inputs
-
 
 @cocotb.test()
 async def test_memory_reset(dut):
@@ -46,7 +42,6 @@ async def test_memory_reset(dut):
     for i, x in enumerate(inputs):
         assert x == 0, f"After reset: input{i}={x}, expected 0"
 
-
 @cocotb.test()
 async def test_sequential_write_and_read(dut):
     """Write all 8 addresses (0..7) with distinct values and check mapped outputs."""
@@ -55,7 +50,6 @@ async def test_sequential_write_and_read(dut):
 
     await reset_dut(dut)
 
-    # Write values 8..15 to addresses 0..7
     test_data = list(range(8, 16))
     for addr, val in enumerate(test_data):
         await write_addr(dut, addr, val)
@@ -68,7 +62,6 @@ async def test_sequential_write_and_read(dut):
         assert weights[i] == exp_weights[i], f"weight{i}={weights[i]}, expected {exp_weights[i]}"
         assert inputs[i] == exp_inputs[i], f"input{i}={inputs[i]}, expected {exp_inputs[i]}"
 
-
 @cocotb.test()
 async def test_edge_addresses(dut):
     """Write to lowest and highest valid addresses (0 and 7)."""
@@ -77,19 +70,17 @@ async def test_edge_addresses(dut):
 
     await reset_dut(dut)
 
-    await write_addr(dut, 0, 0xAA)  # weight0
-    await write_addr(dut, 7, 0x55)  # input3
+    await write_addr(dut, 0, 0xAA)
+    await write_addr(dut, 7, 0x55)
 
     weights, inputs = snapshot_outputs(dut)
     assert weights[0] == 0xAA, f"weight0={weights[0]}, expected 0xAA"
     assert inputs[3] == 0x55, f"input3={inputs[3]}, expected 0x55"
 
-    # Others remain zero
     for i in range(1, 4):
         assert weights[i] == 0, f"weight{i}={weights[i]}, expected 0 after only addr0 write"
     for i in range(0, 3):
         assert inputs[i] == 0, f"input{i}={inputs[i]}, expected 0 before write"
-
 
 @cocotb.test()
 async def test_write_enable_gating(dut):
@@ -99,22 +90,19 @@ async def test_write_enable_gating(dut):
 
     await reset_dut(dut)
 
-    # Attempt write with write_en deasserted
     dut.write_en.value = 0
     dut.addr.value = 2
     dut.in_data.value = 0xDE
     await ClockCycles(dut.clk, 1)
 
     weights, inputs = snapshot_outputs(dut)
-    # Nothing should change
+
     assert weights == [0, 0, 0, 0], f"Unexpected weights after disabled write: {weights}"
     assert inputs == [0, 0, 0, 0], f"Unexpected inputs after disabled write: {inputs}"
 
-    # Now perform valid write to same address
     await write_addr(dut, 2, 0xBE)
     weights, _ = snapshot_outputs(dut)
     assert weights[2] == 0xBE, f"weight2={weights[2]}, expected 0xBE"
-
 
 @cocotb.test()
 async def test_overwrite_same_address(dut):
@@ -124,13 +112,11 @@ async def test_overwrite_same_address(dut):
 
     await reset_dut(dut)
 
-    # Address 5 corresponds to input1
     await write_addr(dut, 5, 0x11)
     await write_addr(dut, 5, 0xA5)
 
     _, inputs = snapshot_outputs(dut)
     assert inputs[1] == 0xA5, f"input1={inputs[1]}, expected overwrite to 0xA5"
-
 
 @cocotb.test()
 async def test_back_to_back_writes(dut):
@@ -140,22 +126,15 @@ async def test_back_to_back_writes(dut):
 
     await reset_dut(dut)
 
-    # Write four weights in consecutive cycles
     for i, val in enumerate([1, 2, 3, 4]):
         await write_addr(dut, i, val)
 
-    # Immediately write the four inputs on the next four cycles
     for i, val in enumerate([9, 8, 7, 6]):
         await write_addr(dut, 4 + i, val)
 
     weights, inputs = snapshot_outputs(dut)
     assert weights == [1, 2, 3, 4], f"weights={weights}, expected [1,2,3,4]"
     assert inputs == [9, 8, 7, 6], f"inputs={inputs}, expected [9,8,7,6]"
-
-
-# -------------------------
-# Added edge-case tests
-# -------------------------
 
 @cocotb.test()
 async def test_min_max_values(dut):
@@ -165,20 +144,17 @@ async def test_min_max_values(dut):
 
     await reset_dut(dut)
 
-    # Write zeros to all, then verify
     for addr in range(8):
         await write_addr(dut, addr, 0x00)
     weights, inputs = snapshot_outputs(dut)
     assert weights == [0, 0, 0, 0], f"weights after zeros: {weights}"
     assert inputs == [0, 0, 0, 0], f"inputs after zeros: {inputs}"
 
-    # Write 0xFF to all, then verify
     for addr in range(8):
         await write_addr(dut, addr, 0xFF)
     weights, inputs = snapshot_outputs(dut)
     assert weights == [0xFF]*4, f"weights after 0xFF: {weights}"
     assert inputs == [0xFF]*4, f"inputs after 0xFF: {inputs}"
-
 
 @cocotb.test()
 async def test_alternating_patterns(dut):
@@ -197,7 +173,6 @@ async def test_alternating_patterns(dut):
     exp_i = [0xAA, 0x55, 0xAA, 0x55]
     assert weights == exp_w, f"weights={weights}, expected {exp_w}"
     assert inputs == exp_i, f"inputs={inputs}, expected {exp_i}"
-
 
 @cocotb.test()
 async def test_sign_bit_and_boundaries(dut):
@@ -222,14 +197,12 @@ async def test_write_during_reset_ignored(dut):
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
 
-    # Hold reset high and attempt a write
     dut.rst.value = 1
     dut.write_en.value = 1
     dut.addr.value = 0
     dut.in_data.value = 0x77
     await ClockCycles(dut.clk, 1)
 
-    # Deassert reset and check state is cleared
     dut.rst.value = 0
     dut.write_en.value = 0
     await ClockCycles(dut.clk, 1)
@@ -237,7 +210,6 @@ async def test_write_during_reset_ignored(dut):
     weights, inputs = snapshot_outputs(dut)
     assert weights == [0, 0, 0, 0], f"weights after write-during-reset: {weights}"
     assert inputs == [0, 0, 0, 0], f"inputs after write-during-reset: {inputs}"
-
 
 @cocotb.test()
 async def test_hold_write_en_and_stream(dut):
@@ -260,7 +232,6 @@ async def test_hold_write_en_and_stream(dut):
     assert weights == patterns[:4], f"weights={weights}, expected {patterns[:4]}"
     assert inputs == patterns[4:], f"inputs={inputs}, expected {patterns[4:]}"
 
-
 @cocotb.test()
 async def test_state_stability_without_writes(dut):
     """After writing, hold signals steady without write_en and confirm state does not change."""
@@ -274,12 +245,11 @@ async def test_state_stability_without_writes(dut):
 
     weights_before, inputs_before = snapshot_outputs(dut)
     dut.write_en.value = 0
-    await ClockCycles(dut.clk, 10)  # idle for a while
+    await ClockCycles(dut.clk, 10)
     weights_after, inputs_after = snapshot_outputs(dut)
 
     assert weights_before == weights_after, f"weights changed without writes: {weights_before} -> {weights_after}"
     assert inputs_before == inputs_after, f"inputs changed without writes: {inputs_before} -> {inputs_after}"
-
 
 @cocotb.test()
 async def test_randomized_burst(dut):
@@ -312,11 +282,9 @@ async def test_multiple_resets(dut):
 
     await reset_dut(dut)
 
-    # First load
     for addr, val in enumerate([1,2,3,4,5,6,7,8]):
         await write_addr(dut, addr, val)
 
-    # Apply reset
     dut.rst.value = 1
     await ClockCycles(dut.clk, 2)
     dut.rst.value = 0
@@ -326,7 +294,6 @@ async def test_multiple_resets(dut):
     assert weights == [0,0,0,0], f"after reset1 weights={weights}"
     assert inputs == [0,0,0,0], f"after reset1 inputs={inputs}"
 
-    # Second load with different values
     for addr, val in enumerate([0x10,0x20,0x30,0x40,0xA0,0xB0,0xC0,0xD0]):
         await write_addr(dut, addr, val)
 
