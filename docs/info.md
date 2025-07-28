@@ -48,6 +48,16 @@ On the other hand, it is non-ideal to reset the entire chip, as it wastes time (
 
 The systolic array is a network, or grid, of PEs. In this 2x2 multiplier, the result is a 4-element square matrix, so there are 4 PEs.
 
+Internally, the systolic array maintains internal registers and a matrix of accumulators that are read by and written into by the PEs.
+
+This includes a 2x3 matrix for the input matrix values, a 3x2 matrix for the weight matrix values, and a 2x2 for the final output.
+
+The extra values beyond 2x2 for input & weight matrix values are to allow the PEs at the edge of the grid to send their input/weight values to a register to a "garbage".
+
+At each clock cycle, elements will flow between the PEs. The inputs will flow from "left to right", and the weights will flow from "top to bottom". To add new values, inputs have to be provided to the ports at the "left", and weights have to be provided to the ports at the "top".
+
+Then, the PEs are instantiated using compile-time construct of `genvar`, in which signals of the PE are connected to specified indices of the internal systolic array signals. Makes the code clean and easy to write!
+
 Block Diagram...
 
 ### The Memory
@@ -56,14 +66,14 @@ Block Diagram...
 
 ### The Control Unit
 
-|Signal Name        | Direction | Width | Description                    |
-|-------------------|-----------|-------|--------------------------------|
-|clk                | input     | 1     | System clock                   |
-|rst                | input     | 1     | Active-high reset              |
-|load_en            | input     | 1     | Enable signal for matrix loading|
-|mem_addr           | output    | 3     | Memory address for matrix elements|
-|mmu_en             | output    | 1     | Enable signal for MMU operations|
-|mmu_cycle          | output    | 3     | Current cycle count for MMU timing|
+|Signal Name        | Direction | Width | Description                           |
+|-------------------|-----------|-------|---------------------------------------|
+|clk                | input     | 1     | System clock                          |
+|rst                | input     | 1     | Active-high reset                     |
+|load_en            | input     | 1     | Enable signal for matrix loading      |
+|mem_addr           | output    | 3     | Memory address for matrix elements    |
+|mmu_en             | output    | 1     | Enable signal for MMU operations      |
+|mmu_cycle          | output    | 3     | Current cycle count for MMU timing    |
 
 The control unit (`control_unit.v`) serves as the central orchestrator for the entire TPU, coordinating the flow of data between memory, the systolic array, and output collection through a carefully designed finite state machine (FSM).
 
@@ -140,7 +150,9 @@ The module will assume an order of input of A matrix values and B matrix values,
 2. Initial Matrix Load
     - Load 8 matrix elements into the chip, one per cycle. For example, if your matrices are [[1, 2], [3, 4]], [[5, 6], [7, 8]], you would load in the row-major, first-matrix-first order of 1, 2, 3, 4, 5, 6, 7, 8. This occurs by setting the 8 `ui_in` pins to the 8-bit value of the set matrix element, and waiting one clock cycle before the next can be loaded.
 3. Collect Output
-    - Thanks to the aggressive pipelining implemented in the chip, once the matrices are already loaded, you can start collecting output! For the above example, the output would be in the order of [19, 22, 43, 50], starting from the cycle right after you finish your last load.
+    - Thanks to the aggressive pipelining implemented in the chip, once the matrices are already loaded, you can start collecting output!
+    - Output elements will come one per cycle. So you would wait for a single clock edge, and then read the `uo_out` pin for the 8-bit output value. At the next clock edge, the value of `uo_out` will change to the next element in the order of c_00, c_01, c_10, c_11.
+    - For the above example, the output would be in the order of [19, 22, 43, 50], starting from the cycle right after you finish your last load.
 4. Repeat
     - Load 8 more input values, collect 4 outputs, rinse & repeat!
 
