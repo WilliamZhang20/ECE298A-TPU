@@ -9,7 +9,7 @@ You can also include images in this folder and reference them in the markdown. E
 
 ## How it works
 
-This project is a small-scale matrix multiplier inspired by the Tensor Processing Unit (TPU), an AI inference ASIC made by Google.
+This project is a small-scale matrix multiplier inspired by the Tensor Processing Unit (TPU), an AI inference ASIC developed by Google.
 
 It multiplies 2x2 matrices, each of which contain signed, 1-byte (8-bit) elements. It does so in a systolic array circuit, where flow of data is facilitated through the connections between a grid of 4 Multiply-Add-Accumulate (MAC) Processing Elements (PEs).
 
@@ -32,7 +32,7 @@ Finally, to schedule the inputs and outputs to and from the systolic array, a fe
 |b_out              | output        | Pass-on of weight |
 |c_out              | output        | Accumulation      |
 
-Let's start from the most atomic element of the matrix multiplier unit (MMU): its processing element (PE). In this 2x2 multiplier, the result is a 4-element square matrix, so there are 4 PEs. The value stored within each PE contributes an element to the output. 
+Let's start from the most atomic element of the matrix multiplier unit (MMU): its processing element (PE). The value stored within each PE contributes an element to the output.
 
 Since each output element of a matrix multiplication is a sum of products, the PE's primary operation is a multiply add accumulate.
 
@@ -46,7 +46,7 @@ On the other hand, it is non-ideal to reset the entire chip, as it wastes time (
 
 ### The Systolic Array
 
-The systolic array is a network, or grid, of PEs.
+The systolic array is a network, or grid, of PEs. In this 2x2 multiplier, the result is a 4-element square matrix, so there are 4 PEs.
 
 Block Diagram...
 
