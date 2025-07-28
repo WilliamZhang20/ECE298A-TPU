@@ -18,6 +18,8 @@ module PE #(
         b_out <= b_in;
         if (rst) begin
             c_out <= 0;
+            a_out <= 0;
+            b_out <= 0;
         end else if (clear) begin
             c_out <= a_in * b_in;
         end else begin
