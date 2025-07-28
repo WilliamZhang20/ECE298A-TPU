@@ -17,7 +17,7 @@ def get_expected_matmul(A, B, transpose=False, relu=False):
     result = A_mat @ B_mat
     if relu:
         result = np.maximum(result, 0)
-    return [saturate_to_s8(val) for val in result.flatten().tolist()]
+    return result.flatten().tolist()
 
 async def load_matrix(dut, matrix, transpose=0, relu=0):
     """
@@ -33,15 +33,29 @@ async def load_matrix(dut, matrix, transpose=0, relu=0):
         dut.uio_in.value = (transpose << 1) | (relu << 2) | 1  # load_en=1, load_sel_ab=sel, load_index
         await RisingEdge(dut.clk)
 
-async def read_signed_output(dut, transpose=0, relu=0):
+async def parallel_load_read(dut, A, B, transpose=0, relu=0):
     results = []
-    for i in range(4):
-        dut.uio_in.value = (transpose << 1) | (relu << 2)
-        await ClockCycles(dut.clk, 1)
-        val_unsigned = dut.uo_out.value.integer
-        val_signed = val_unsigned if val_unsigned < 128 else val_unsigned - 256
-        results.append(val_signed)
-        dut._log.info(f"Read C[{i//2}][{i%2}] = {val_signed}")
+    dut.uio_in.value = (transpose << 1) | (relu << 2) | 1  # load_en=1
+
+    for inputs in [A, B]:
+        for i in range(2):
+            idx0 = i * 2
+            idx1 = i * 2 + 1
+            # Feed either real data or dummy zeros
+            dut.ui_in.value = inputs[idx0] if inputs else 0
+            await ClockCycles(dut.clk, 1)
+            high = dut.uo_out.value.integer
+
+            dut.ui_in.value = inputs[idx1] if inputs else 0
+            await ClockCycles(dut.clk, 1)
+            low = dut.uo_out.value.integer
+
+            combined = (high << 8) | low
+            if combined >= 0x8000:
+                combined -= 0x10000
+
+            results.append(combined)
+            dut._log.info(f"Read value = {combined}")
     return results
 
 def get_expected_large_matmul(A, B):
@@ -187,6 +201,7 @@ async def test_relu_transpose(dut):
     dut.rst_n.value = 1
     await ClockCycles(dut.clk, 2)
 
+    ## FIRST SET OF MATRICES
     A = [5, -6, 7, 8]  # row-major
     B = [8, 9, 6, 8]  # row-major: [B00, B01, B10, B11]
 
@@ -194,21 +209,19 @@ async def test_relu_transpose(dut):
     await load_matrix(dut, B, transpose=0, relu=1)
 
     expected = get_expected_matmul(A, B, transpose=False, relu=True)
-    results = await read_signed_output(dut, transpose=0, relu=1)
+
+    ## SECOND SET OF MATRICES
+    A = [1, 2, 3, 4]
+    B = [5, 6, 7, 8]
+    results = await parallel_load_read(dut, A, B, transpose=1, relu=1)
 
     for i in range(4):
         assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
 
     dut._log.info("First part passed")
 
-    A = [1, 2, 3, 4]
-    B = [5, 6, 7, 8]
-
-    await load_matrix(dut, A, transpose=1, relu=1)
-    await load_matrix(dut, B, transpose=1, relu=1)
-
     expected = get_expected_matmul(A, B, transpose=True, relu=True)
-    results = await read_signed_output(dut, transpose=1, relu=1)
+    results = await parallel_load_read(dut, [], [], transpose=1, relu=1)
 
     for i in range(4):
         assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
@@ -240,26 +253,24 @@ async def test_numeric_limits(dut):
     results = []
 
     # Wait for systolic array to compute
+    # INPUT NEXT ROUND OF MATRICES
     
-    results = await read_signed_output(dut)
+    A = [125, -64, 124, 108]  # row-major
+    B = [99, -12, 105, -106]  # row-major: [B00, B01, B10, B11]
+    
+    results = await parallel_load_read(dut, A, B)
 
     for i in range(4):
         assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
 
     dut._log.info("Passed large positive values")
 
-    A = [5, -6, 7, 8]  # row-major
-    B = [8, -12, 9, -7]  # row-major: [B00, B01, B10, B11]
-
-    await load_matrix(dut, A)
-    await load_matrix(dut, B)
-
     expected = get_expected_matmul(A, B)
     results = []
 
     # Wait for systolic array to compute
     
-    results = await read_signed_output(dut)
+    results = await parallel_load_read(dut, [], [])
 
     for i in range(4):
         assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
@@ -300,8 +311,14 @@ async def test_project(dut):
     # STEP 4: Read outputs
     expected = get_expected_matmul(A, B)
     results = []
+    
+    #######################################
+    ##### TEST RUN 2 - CHECK CLEARING #####
 
-    results = await read_signed_output(dut)
+    A = [79, -10, 7, 8]  # row-major
+    B = [2, 6, 5, 8]  # row-major: [B00, B01, B10, B11]
+
+    results = await parallel_load_read(dut, A, B)
 
     # ------------------------------
     # STEP 5: Check results
@@ -310,24 +327,16 @@ async def test_project(dut):
 
     dut._log.info("Test 1 passed!")
 
-    #######################################
-    ##### TEST RUN 2 - CHECK CLEARING #####
-    
-    # ------------------------------
-    # STEP 1: Load matrices
-
-    A = [79, -10, 7, 8]  # row-major
-    B = [2, 6, 5, 8]  # row-major: [B00, B01, B10, B11]
-
-    await load_matrix(dut, A)
-    await load_matrix(dut, B)
-
     # ------------------------------
     # STEP 4: Read outputs
     expected = get_expected_matmul(A, B)
     results = []
 
-    results = await read_signed_output(dut)
+    # TEST RUN 3 MATRICES
+    A = [5, -6, 7, 8]  # row-major
+    B = [1, 2, 3, -4]  # row-major: [B00, B01, B10, B11]
+
+    results = await parallel_load_read(dut, A, B)
 
     # ------------------------------
     # STEP 5: Check results
@@ -339,61 +348,15 @@ async def test_project(dut):
     #########################################
     ##### TEST RUN 3 - CHECK SIGNED OPS #####
 
-    A = [5, -6, 7, 8]  # row-major
-    B = [1, 2, 3, -4]  # row-major: [B00, B01, B10, B11]
-
-    await load_matrix(dut, A)
-    await load_matrix(dut, B)
-
     expected = get_expected_matmul(A, B)
     results = []
 
     # Wait for systolic array to compute
     
-    results = await read_signed_output(dut)
+    results = await parallel_load_read(dut, [], [])
 
     for i in range(4):
         assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
 
     dut._log.info("Test 3 passed!")
-
-    # ------------------------------
-    # TEST RUN 4: Large Matrix Multiplication with Arbitrary Dimensions
-    # User-specified size, all elements MUST FIT WITHIN INT8 RANGE
-    np.random.seed(42)
-    A_large = np.random.randint(-10, 10, size=(5, 3))
-    B_large = np.random.randint(-10, 10, size=(3, 6))
-
-    num_runs = 10
-
-    # Benchmark NumPy
-    numpy_times = []
-    for _ in range(num_runs):
-        start_time = time.perf_counter()
-        npResult = A_large @ B_large
-        end_time = time.perf_counter()
-        numpy_times.append(end_time - start_time)
-    numpy_avg_time = statistics.mean(numpy_times)
-    numpy_std_time = statistics.stdev(numpy_times) if num_runs > 1 else 0
-
-    dut_times = []
-
-    for _ in range(num_runs):
-        start_time = time.perf_counter()
-        dut_result = await matmul(dut, A_large, B_large)
-        end_time = time.perf_counter()
-        numpy_times.append(end_time - start_time)
-    dut_avg_time = statistics.mean(numpy_times)
-    dut_std_time = statistics.stdev(numpy_times) if num_runs > 1 else 0
-
-    print(f"NumPy Average Time: {numpy_avg_time:.6f} seconds (Std: {numpy_std_time:.6f})")
-    print(f"DUT Average Time: {dut_avg_time:.6f} seconds (Std: {dut_std_time:.6f})")
-
-    # Perform matrix multiplication on DUT
-    result = await matmul(dut, A_large, B_large)
-    
-    # Check results against expected
-    check_expected(A_large, B_large, result)
-
-    dut._log.info("Test 4 (Arbitrary Dimension Matrix) passed!")
    

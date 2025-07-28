@@ -24,12 +24,12 @@ module tt_um_tpu (
     reg clear; // reset of PEs only
     wire [2:0] mem_addr; // 3-bit address for matrix and element selection
     
-    wire [2:0] mmu_cycle; // compute/output cycle count, minimum 5, maximum ???
+    wire [2:0] mmu_cycle; // compute/output cycle count - 3 bit
 
     wire [7:0] weight0, weight1, weight2, weight3;
     wire [7:0] input0, input1, input2, input3;
 
-    wire [15:0] outputs [0:3]; // raw accumulations (12-bit)
+    wire [15:0] outputs [0:3]; // raw accumulations (16-bit)
     wire [7:0] out_data; // sent to CPU
     // Ports of the systolic Array
     wire [7:0] a_data0, b_data0, a_data1, b_data1;

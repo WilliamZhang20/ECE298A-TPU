@@ -39,7 +39,8 @@ module control_unit (
                 end
             end
             
-            S_MMU_FEED_COMPUTE_WB: begin
+            S_MMU_FEED_COMPUTE_WB:
+                next_state = S_MMU_FEED_COMPUTE_WB;
                /* Cycle 0: Start feeding data (a00×b00 starts)
                 * Cycle 1: First partial products computed, more data fed
                 * Cycle 2: c00 ready (a00×b00 + a01×b10), can be output
@@ -49,10 +50,6 @@ module control_unit (
                 * Cycle 4: c11 ready (a10×b01 + a11×b11), can be output
                 * Cycle 5: All outputs remain valid
                 */
-                if (mmu_cycle == 3'b101) begin
-                    next_state = S_IDLE;
-                end
-            end
 
 			default: begin
 				next_state = S_IDLE;
@@ -101,9 +98,21 @@ module control_unit (
                 end
 
                 S_MMU_FEED_COMPUTE_WB: begin
-                    mem_addr <= 0;
-                    mmu_en <= 1;
+                    // Now: the TPU will be forever stuck in this cycle...
+                    // Cycles through counter of 8...
+                    // In each cycle of 8 counts, it will: output 4 16-bit output elements the result of the previous matmul,
+                    // and take in 8 new 8-bit elements
+                    if (load_en) begin
+                        mat_elems_loaded <= mat_elems_loaded + 1;
+                        mem_addr <= mat_elems_loaded + 1;
+                    end
 					mmu_cycle <= mmu_cycle + 1;
+                    if (mmu_cycle == 3'b111) begin
+                        mmu_cycle <= 0;
+                    end else if (mmu_cycle == 1) begin
+                        mat_elems_loaded <= 0;
+                        mem_addr <= 0;
+                    end
                 end
 				
 				default: begin
