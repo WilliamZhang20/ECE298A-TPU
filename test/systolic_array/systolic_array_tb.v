@@ -24,10 +24,10 @@ module systolic_array_tb;
   reg signed [7:0] b_data1;
 
   // Outputs
-  wire signed [11:0] c00;
-  wire signed [11:0] c01;
-  wire signed [11:0] c10;
-  wire signed [11:0] c11;
+  wire signed [15:0] c00;
+  wire signed [15:0] c01;
+  wire signed [15:0] c10;
+  wire signed [15:0] c11;
 
   // Instantiate the systolic array module
   systolic_array_2x2 #(.WIDTH(8)) dut (
