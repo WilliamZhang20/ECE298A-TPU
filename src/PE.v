@@ -10,22 +10,17 @@ module PE #(
     output reg signed [WIDTH-1:0] a_out,
     output reg signed [WIDTH-1:0] b_out,
 
-    output reg signed [WIDTH+3:0] c_out
+    output reg signed [WIDTH*2-1:0] c_out
 );
 
     always @(posedge clk or posedge rst) begin
+        a_out <= a_in;
+        b_out <= b_in;
         if (rst) begin
-            a_out <= 0;
-            b_out <= 0;
             c_out <= 0;
         end else if (clear) begin
-            a_out <= 0;
-            b_out <= 0;
-            c_out <= 0;
+            c_out <= a_in * b_in;
         end else begin
-            a_out <= a_in;
-            b_out <= b_in;
-
             c_out <= c_out + (a_in * b_in);
         end
     end

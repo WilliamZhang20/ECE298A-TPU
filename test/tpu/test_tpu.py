@@ -129,7 +129,6 @@ async def read_matrix_output(dut, results_large, i, j, transpose=0, relu=0):
         row = i + (k // 2)
         col = j + (k % 2)
         results_large[row, col] += val_signed
-        dut._log.info(f"Read C[{row}][{col}] = {val_signed}")
 
 async def matmul(dut, A, B):
     """
@@ -359,25 +358,6 @@ async def test_project(dut):
     # ------------------------------
     # TEST RUN 4: Large Matrix Multiplication with Arbitrary Dimensions
     # User-specified size, all elements MUST FIT WITHIN INT8 RANGE
-    
-    """
-    [[ 18   8  -6]
-    [-13   0  18]
-    [ -2   2 -10]
-    [-10   3  15]
-    [ 19   3 -18]]
-
-    [[  1 -19   3   9  17 -19]
-    [  0  12  -9   1   4   6]
-    [  7  -5  -6 -18  16 -14]]
-
-    correct result:
-    [[ -24 -128   18  127  127 -128]
-    [ 113  127 -128 -128   67   -5]
-    [ -72  112   36  127 -128  127]
-    [  95  127 -128 -128   82   -2]
-    [-107 -128  127  127   47  -91]]
-    """
     np.random.seed(42)
     A_large = np.random.randint(-20, 20, size=(5, 3))
     B_large = np.random.randint(-20, 20, size=(3, 6))
