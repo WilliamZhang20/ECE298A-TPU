@@ -43,7 +43,7 @@ endif
 # Allow sharing configuration between design and testbench via `include`:
 COMPILE_ARGS 		+= -I$(SRC_DIR)
 
-.PHONY: all test-top test-memory test-systolic-array test-control-unit
+.PHONY: all test-top test-memory test-systolic-array test-control-unit test-mmu-feeder
 
 all:
 	$(MAKE) test-top
@@ -90,6 +90,16 @@ test-control-unit:
 		PYTHONPATH=$(WAVES_ROOT)/control_unit \
 		WAVES_DIR=$(WAVES_ROOT)/control_unit/wave \
 		COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/control_unit/wave/control_unit_tb_$(TIMESTAMP).vcd\""'
+
+test-mmu-feeder:
+	$(MAKE) clean
+	$(MAKE) sim \
+		TOPLEVEL=mmu_feeder_tb \
+		MODULE=test_mmu_feeder \
+		VERILOG_SOURCES="$(WAVES_ROOT)/mmu_feeder/mmu_feeder_tb.v $(SRC_DIR)/mmu_feeder.v" \
+		PYTHONPATH=$(WAVES_ROOT)/mmu_feeder \
+		WAVES_DIR=$(WAVES_ROOT)/mmu_feeder/wave \
+		COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/mmu_feeder/wave/mmu_feeder_tb_$(TIMESTAMP).vcd\""'
 
 # Phony target for cleaning up
 .PHONY: clean
