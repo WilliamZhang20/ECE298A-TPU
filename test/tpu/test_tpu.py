@@ -58,132 +58,174 @@ async def parallel_load_read(dut, A, B, transpose=0, relu=0):
             dut._log.info(f"Read value = {combined}")
     return results
 
-def get_expected_large_matmul(A, B):
+def get_expected_large_matmul(A, B, transpose=False, relu=False):
+    # First saturate to emulate hardware's capacity & guard against bad test cases
     A_saturated = np.vectorize(saturate_to_s8)(A)
     B_saturated = np.vectorize(saturate_to_s8)(B)
 
-    m, n = A.shape
-    n_b, p = B.shape
-    assert n == n_b, "Incompatible dimensions"
+    if transpose:
+        B_saturated = B_saturated.T
+    
+    result = A_saturated @ B_saturated
 
-    # Pad dimensions to multiple of 2
-    m_padded = ((m + 1) // 2) * 2
-    n_padded = ((n + 1) // 2) * 2
-    p_padded = ((p + 1) // 2) * 2
+    if relu:
+        result = np.maximum(result, 0)
 
-    A_pad = np.zeros((m_padded, n_padded), dtype=int)
-    B_pad = np.zeros((n_padded, p_padded), dtype=int)
-    A_pad[:m, :n] = A_saturated
-    B_pad[:n, :p] = B_saturated
-
-    # Initialize output accumulator with 32-bit int to avoid overflow
-    result = np.zeros((m_padded, p_padded), dtype=int)
-
-    for i in range(0, m_padded, 2):
-        for j in range(0, p_padded, 2):
-            # Clear PE accumulators for this 2x2 block:
-            # We emulate the reset in hardware by zeroing local accumulators.
-            acc_block = np.zeros((2, 2), dtype=int)
-
-            for k in range(0, n_padded, 2):
-                # Extract 2x2 sub-blocks
-                A_block = A_pad[i:i+2, k:k+2]
-                B_block = B_pad[k:k+2, j:j+2]
-
-                # Multiply elementwise (each element 8-bit saturated)
-                # Resulting products are 16-bit signed integers
-                products = np.zeros((2, 2, 2, 2), dtype=int)  # (A-row, A-col, B-row, B-col)
-                for a_r in range(2):
-                    for a_c in range(2):
-                        for b_r in range(2):
-                            for b_c in range(2):
-                                if (i + a_r) < m and (k + a_c) < n and (k + b_r) < n and (j + b_c) < p:
-                                    # Only valid indices contribute
-                                    prod = A_block[a_r, a_c] * B_block[b_r, b_c]
-                                    products[a_r, a_c, b_r, b_c] = prod
-                                else:
-                                    products[a_r, a_c, b_r, b_c] = 0
-
-                # Now sum over the products for matrix multiplication partial sums:
-                # The 2x2 block output c_ij = sum over k of a_ik * b_kj
-                # For each output element in acc_block:
-                for r in range(2):
-                    for c in range(2):
-                        # sum over a_c (which indexes over k dimension) matching b_r index
-                        partial_sum = 0
-                        for inner in range(2):  # inner loop over 2 elements in block dimension
-                            partial_sum += products[r, inner, inner, c]
-
-                        # Accumulate partial sums with 12-bit wrap (simulate PE accumulator)
-                        acc_block[r, c] = (acc_block[r, c] + saturate_to_s8(partial_sum))
-
-            # After summing all k-blocks, saturate final 12-bit values to signed 8-bit and store
-            for r in range(2):
-                for c in range(2):
-                    if (i + r) < m and (j + c) < p:
-                        result[i + r, j + c] = acc_block[r, c]
-
-    # Return only the original shape
-    return result[:m, :p]
+    return result
 
 def check_expected(A, B, result):
     """
     Check DUT results against expected matrix multiplication, for big matrices
     """
-    print(A @ B)
     print(result)
     expected = get_expected_large_matmul(A, B)
     print(expected)
     np.testing.assert_array_equal(result, expected, err_msg="Matrix multiplication result does not match expected")
 
-async def read_matrix_output(dut, results_large, i, j, transpose=0, relu=0):
-    for k in range(4):
-        dut.uio_in.value = (transpose << 1) | (relu << 2)
-        await ClockCycles(dut.clk, 1)
-        val_unsigned = dut.uo_out.value.integer
-        val_signed = val_unsigned if val_unsigned < 128 else val_unsigned - 256
-        row = i + (k // 2)
-        col = j + (k % 2)
-        results_large[row, col] += val_signed
-
-async def matmul(dut, A, B):
+async def accumulate_matrix_output(dut, results_large, i, j, transpose=0, relu=0, A_block=None, B_block=None):
     """
-    Perform matrix multiplication on DUT for matrices of arbitrary dimensions.
+    Interleaved output read and input feed for a 2x2 result tile.
+    Accumulates results at results_large[i:i+2, j:j+2] by adding partial contributions.
+    Loads A_block and B_block in 8 cycles while reading 4 outputs in 8 cycles.
+    """
+    dut.uio_in.value = (transpose << 1) | (relu << 2) | 1  # load_en=1
+
+    for idx in range(2):
+        # Load A and B elements for row idx (2 elements each)
+        for k in range(2):
+            # Load A[idx*2 + k]
+            dut.ui_in.value = A_block[idx * 2 + k] if A_block else 0
+            await ClockCycles(dut.clk, 1)
+            # Read high byte of output
+            high = dut.uo_out.value.integer
+
+            # Load B[idx*2 + k]
+            dut.ui_in.value = B_block[idx * 2 + k] if B_block else 0
+            await ClockCycles(dut.clk, 1)
+            # Read low byte of output
+            low = dut.uo_out.value.integer
+
+            # Combine high and low bytes
+            combined = (high << 8) | low
+            if combined >= 0x8000:
+                combined -= 0x10000
+
+            # Accumulate result in correct position (row-major order)
+            row = i + idx
+            col = j + k
+            results_large[row, col] += combined  # Accumulate partial result
+
+    print(results_large)
+
+async def accumulate_matrix_output(dut, results_large, i, j, transpose=0, relu=0, A_block=None, B_block=None):
+    """
+    Interleaved output read and input feed for a 2x2 result tile.
+    Accumulates results at results_large[i:i+2, j:j+2] by adding partial contributions.
+    Loads A_block and B_block in 8 cycles while reading 4 outputs in 8 cycles.
+    """
+    dut.uio_in.value = (transpose << 1) | (relu << 2) | 1  # load_en=1
+
+    # Store outputs for debugging
+    outputs = []
+    
+    for idx in range(2):
+        for k in range(2):
+            # Load A[idx*2 + k]
+            dut.ui_in.value = A_block[idx * 2 + k] if A_block else 0
+            await ClockCycles(dut.clk, 1)
+            high = dut.uo_out.value.integer
+
+            # Load B[idx*2 + k]
+            dut.ui_in.value = B_block[idx * 2 + k] if B_block else 0
+            await ClockCycles(dut.clk, 1)
+            low = dut.uo_out.value.integer
+
+            # Combine high and low bytes
+            combined = (high << 8) | low
+            if combined >= 0x8000:
+                combined -= 0x10000
+
+            # Map output to result matrix (row-major order: C[i,j], C[i,j+1], C[i+1,j], C[i+1,j+1])
+            row = i + (idx if k == 0 else idx + 1)
+            col = j + (k if idx == 0 else k + 1)
+            results_large[row, col] += combined
+            outputs.append(combined)
+
+    return outputs
+
+async def matmul(dut, A, B, transpose=False, relu=False):
+    """
+    Fully pipelined systolic matrix multiplication using 2x2 blocks.
+    Accumulates partial results across k dimension for each (i,j) tile.
+    Loads two 2x2 matrices in 8 cycles, collects 4 outputs in 8 cycles while loading next matrices.
     """
     m, n = A.shape
     n_b, p = B.shape
-    assert n == n_b, "Matrix dimensions must be compatible for multiplication"
-    
-    # Compute padded dimensions (next multiple of 2)
-    m_padded = ((m + 1) // 2) * 2
-    n_padded = ((n + 1) // 2) * 2
-    p_padded = ((p + 1) // 2) * 2
-    
-    # Pad matrices with zeros
-    A_padded = np.zeros((m_padded, n_padded), dtype=int)
-    B_padded = np.zeros((n_padded, p_padded), dtype=int)
+    assert n == n_b, "Matrix dimension mismatch"
+
+    # Pad matrices to be multiples of 2
+    m_p, n_p = ((m + 1) // 2) * 2, ((n + 1) // 2) * 2
+    p_p = ((p + 1) // 2) * 2
+
+    A_padded = np.zeros((m_p, n_p), dtype=int)
+    B_padded = np.zeros((n_p, p_p), dtype=int)
     A_padded[:m, :n] = A
     B_padded[:n, :p] = B
-    
-    # Initialize result matrix
-    results_large = np.zeros((m_padded, p_padded), dtype=int)
-    
-    # Process in 2x2 blocks
-    for i in range(0, m_padded, 2):
-        for j in range(0, p_padded, 2):
-            for k in range(0, n_padded, 2):
-                # Extract 2x2 blocks
-                A_block = A_padded[i:i+2, k:k+2].flatten().tolist()
-                B_block = B_padded[k:k+2, j:j+2].flatten().tolist()
-                
-                # Load blocks into DUT
-                await load_matrix(dut, A_block)
-                await load_matrix(dut, B_block)
-                
-                # Read partial result directly into results_large
-                await read_matrix_output(dut, results_large, i, j)
-    
-    # Return valid result (m x p)
+    results_large = np.zeros((m_p, p_p), dtype=int)
+
+    # Generate tile coordinates, processing all j for each (i,k) pair
+    tile_coords = [
+        (i, j, k)
+        for i in range(0, m_p, 2)
+        for k in range(0, n_p, 2)
+        for j in range(0, p_p, 2)
+    ]
+
+    # Step 1: Load the first tile pair
+    i0, j0, k0 = tile_coords[0]
+    A_block = A_padded[i0:i0+2, k0:k0+2].flatten().tolist()
+    B_block = B_padded[k0:k0+2, j0:j0+2].flatten().tolist()
+    dut._log.info(f"Loading first tile: i={i0}, j={j0}, k={k0}, A_block={A_block}, B_block={B_block}")
+    await load_matrix(dut, A_block, transpose=0, relu=relu)
+    await load_matrix(dut, B_block, transpose=transpose, relu=relu)
+
+    # Step 2: Pipelined loop: read output of previous tile + load next tile
+    for idx, (i, j, k) in enumerate(tile_coords[1:], 1):
+        A_block_next = A_padded[i:i+2, k:k+2].flatten().tolist()
+        B_block_next = B_padded[k:k+2, j:j+2].flatten().tolist()
+        dut._log.info(f"Processing tile {idx}: i={i}, j={j}, k={k}, A_block={A_block_next}, B_block={B_block_next}")
+
+        # Read output of previous tile and load next tile
+        outputs = await accumulate_matrix_output(dut, results_large, i0, j0, transpose, relu, A_block_next, B_block_next)
+
+        # Debug: Compute expected partial result for this tile
+        A_tile = np.array(A_block).reshape(2, 2)
+        B_tile = np.array(B_block).reshape(2, 2)
+        expected_tile = np.dot(A_tile, B_tile).flatten()
+        dut._log.info(f"Expected partial result for tile (i={i0}, j={j0}, k={k0}): {expected_tile.tolist()}")
+        dut._log.info(f"Actual outputs: {outputs}")
+
+        i0, j0, k0 = i, j, k  # Slide window
+        A_block, B_block = A_block_next, B_block_next
+
+    # Step 3: Read final output
+    dut._log.info(f"Reading final tile: i={i0}, j={j0}, k={k0}")
+    outputs = await accumulate_matrix_output(dut, results_large, i0, j0, transpose, relu)
+
+    # Debug: Compute expected partial result for final tile
+    A_tile = np.array(A_block).reshape(2, 2)
+    B_tile = np.array(B_block).reshape(2, 2)
+    expected_tile = np.dot(A_tile, B_tile).flatten()
+    dut._log.info(f"Expected partial result for tile (i={i0}, j={j0}, k={k0}): {expected_tile.tolist()}")
+    dut._log.info(f"Actual outputs: {outputs}")
+
+    # Step 4: Wait for pipeline to flush
+    await ClockCycles(dut.clk, 8)
+
+    # Apply ReLU if enabled
+    if relu:
+        results_large = np.maximum(results_large, 0)
+
     return results_large[:m, :p]
 
 @cocotb.test()
@@ -312,23 +354,25 @@ async def test_project(dut):
     expected = get_expected_matmul(A, B)
     results = []
     
-    #######################################
-    ##### TEST RUN 2 - CHECK CLEARING #####
-
+    # Test 2 matrices
     A = [79, -10, 7, 8]  # row-major
     B = [2, 6, 5, 8]  # row-major: [B00, B01, B10, B11]
 
+    # Read test 1 matrices
     results = await parallel_load_read(dut, A, B)
 
     # ------------------------------
-    # STEP 5: Check results
+    # STEP 5: Check results of test 1
     for i in range(4):
         assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
 
     dut._log.info("Test 1 passed!")
+    
+    #######################################
+    ##### TEST RUN 2 - CHECK CLEARING #####
 
     # ------------------------------
-    # STEP 4: Read outputs
+    # STEP 4: Get expected of test 2
     expected = get_expected_matmul(A, B)
     results = []
 
@@ -336,10 +380,11 @@ async def test_project(dut):
     A = [5, -6, 7, 8]  # row-major
     B = [1, 2, 3, -4]  # row-major: [B00, B01, B10, B11]
 
+    # Read test 2 outputs + load test 3 inputs
     results = await parallel_load_read(dut, A, B)
 
     # ------------------------------
-    # STEP 5: Check results
+    # STEP 5: Check results of test 2
     for i in range(4):
         assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
 
@@ -353,10 +398,39 @@ async def test_project(dut):
 
     # Wait for systolic array to compute
     
+    # Test 4 - ABSOLUTE LIMIT
+    A = [-128, -128, -128, -128]  # row-major
+    B = [127, 127, 127, 127]  # row-major: [B00, B01, B10, B11]
+
+    results = await parallel_load_read(dut, A, B)
+
+    # Check results of test #3
+    for i in range(4):
+        assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
+
+    dut._log.info("Test 3 passed!")
+
+    ## Get expected of test 4
+    expected = get_expected_matmul(A, B)
+    results = []
+
+    A = [-128, -128, -128, -128]  # row-major
+    B = [-128, -128, -128, -128]  # row-major: [B00, B01, B10, B11]
+
+    results = await parallel_load_read(dut, A, B)
+
+    for i in range(4):
+        assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
+
+    dut._log.info("Test 4 passed!")
+
+    expected = [-32768, -32768, -32768, -32768] # CAUTION: VERY SPECIAL CASE
+    results = []
+
+    # No test 6 matrices!!!
     results = await parallel_load_read(dut, [], [])
 
     for i in range(4):
         assert results[i] == expected[i], f"C[{i//2}][{i%2}] = {results[i]} != expected {expected[i]}"
 
-    dut._log.info("Test 3 passed!")
-   
+    dut._log.info("Test 5 passed")
