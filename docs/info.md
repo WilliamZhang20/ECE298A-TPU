@@ -199,8 +199,8 @@ The module will assume an order of input of A matrix values and B matrix values,
 An external microcontroller will send signals over the chip interface, including the clock signal, which will alow it to coordinate I/O on clock edges.
 
 ## Acknowledgements
+* William Zhang: Processing Elements, Systolic Array, General Design/Sythesis, Pipelining
 * Ethan Leung: Matrix Unit Feeder
 * Guhan Iyer: Unified Memory
-* William Zhang: Processing Elements, Systolic Array
 * Yash Karthik: Control Unit
 * ECE 298A Course Staff: Prof. John Long, Prof. Vincent Gaudet, Refik Yalcin

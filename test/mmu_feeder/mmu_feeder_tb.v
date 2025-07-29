@@ -17,28 +17,29 @@ module mmu_feeder_tb ();
 		#1;
 	end
 
-  wire clk;
-  wire rst;
-  wire en;
-  wire [2:0] mmu_cycle,
+  reg clk;
+  reg rst;
+  reg en;
+  reg transpose;
+  reg [2:0] mmu_cycle;
 
   /* Memory module interface */
-  wire [7:0] weight0, weight1, weight2, weight3;
+  reg [7:0] weight0, weight1, weight2, weight3;
 
-  wire [7:0] input0, input1, input2, input3;
+  reg [7:0] input0, input1, input2, input3;
 
   /*  mmu -> feeder  */
-  wire signed [15:0] c00, c01, c10, c11;
+  reg signed [15:0] c00, c01, c10, c11;
 
   /*  feeder -> mmu */
-  wire clear;
-  wire [7:0] a_data0;
-  wire [7:0] a_data1;
-  wire [7:0] b_data0;
-  wire [7:0] b_data1;
+  reg clear;
+  reg [7:0] a_data0;
+  reg [7:0] a_data1;
+  reg [7:0] b_data0;
+  reg [7:0] b_data1;
 
   /*  feeder -> rpi */
-  wire done;
+  reg done;
   reg [7:0] host_outdata;
 
   // Instantiate the MMU feeder module
@@ -47,6 +48,7 @@ module mmu_feeder_tb ();
     .rst(rst),
     .en(en),
     .mmu_cycle(mmu_cycle),
+    .transpose(transpose),
 
     .weight0(weight0),
     .weight1(weight1),
