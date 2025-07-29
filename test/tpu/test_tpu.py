@@ -2,8 +2,16 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 import numpy as np
-import time
-import statistics
+import itertools
+
+async def reset_dut(dut):
+    dut.ena.value = 1
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 1)
+    dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 1)
 
 def saturate_to_s8(x):
     """Clamp value to 8-bit signed range [-128, 127]."""
@@ -58,7 +66,7 @@ async def parallel_load_read(dut, A, B, transpose=0, relu=0):
             dut._log.info(f"Read value = {combined}")
     return results
 
-def get_expected_large_matmul(A, B, transpose=False, relu=False):
+def get_expected_large_matmul(A, B, transpose=0, relu=0):
     # First saturate to emulate hardware's capacity & guard against bad test cases
     A_saturated = np.vectorize(saturate_to_s8)(A)
     B_saturated = np.vectorize(saturate_to_s8)(B)
@@ -73,16 +81,16 @@ def get_expected_large_matmul(A, B, transpose=False, relu=False):
 
     return result
 
-def check_expected(A, B, result):
+def check_expected(A, B, result, transpose=0, relu=0):
     """
     Check DUT results against expected matrix multiplication, for big matrices
     """
     print("The result from custom kernel\n", result)
-    expected = get_expected_large_matmul(A, B)
+    expected = get_expected_large_matmul(A, B, transpose, relu)
     print("Expected result from NumPy\n", expected)
     np.testing.assert_array_equal(result, expected, err_msg="Matrix multiplication result does not match expected")
 
-async def accumulate_matrix_output(dut, results_large, i, j, transpose=0, relu=0, A_block=None, B_block=None):
+async def accumulate_matrix_output(dut, results_large, i, j, transpose=0, A_block=None, B_block=None):
     """
     Serially loads A_block and B_block (1 value per cycle),
     and reads interleaved output (1 byte per cycle: high, low, high, low, ...).
@@ -91,7 +99,7 @@ async def accumulate_matrix_output(dut, results_large, i, j, transpose=0, relu=0
     # Full interleaved stream of 8 input values: A0-A3, then B0-B3
     input_stream = (A_block + B_block) if (A_block and B_block) else [0]*8
 
-    dut.uio_in.value = (transpose << 1) | (relu << 2) | 1  # load_en=1
+    dut.uio_in.value = (transpose << 1) | 1  # load_en=1
 
     partial_outputs = []
 
@@ -111,7 +119,6 @@ async def accumulate_matrix_output(dut, results_large, i, j, transpose=0, relu=0
             val -= 0x10000
         combined_outputs.append(val)
 
-    # Map to result tile: row-major order: [C00, C01, C10, C11]
     results_large[i,   j  ] += combined_outputs[0]  # C00
     results_large[i,   j+1] += combined_outputs[1]  # C01
     results_large[i+1, j  ] += combined_outputs[2]  # C10
@@ -127,26 +134,40 @@ async def matmul(dut, A, B, transpose=False, relu=False):
     """
     m, n = A.shape
     n_b, p = B.shape
-    assert n == n_b, "Matrix dimension mismatch"
+    if (transpose):
+        assert n == p, "Reminder: you are computing A*B^T"
+    else:
+        assert n == n_b, "Matrix dimension mismatch"
 
     # Pad dimensions to multiples of 2
     m_p = ((m + 1) // 2) * 2
     n_p = ((n + 1) // 2) * 2
+    n_bp = ((n_b + 1) // 2) * 2
     p_p = ((p + 1) // 2) * 2
 
     A_padded = np.zeros((m_p, n_p), dtype=int)
-    B_padded = np.zeros((n_p, p_p), dtype=int)
+    B_padded = np.zeros((n_bp, p_p), dtype=int)
     A_padded[:m, :n] = A
-    B_padded[:n, :p] = B
-    results_large = np.zeros((m_p, p_p), dtype=int)
+    B_padded[:n_b, :p] = B
+    results_large = np.zeros((m_p, n_bp), dtype=int) if transpose else np.zeros((m_p, p_p), dtype=int)
 
     # Generate tile coordinates (i, j, k)
-    tile_coords = [
-        (i, j, k)
-        for i in range(0, m_p, 2)
-        for j in range(0, p_p, 2)
-        for k in range(0, n_p, 2)
-    ]
+    if transpose:
+        # Order: j, i, k for transpose case
+        tile_coords = [
+            (i, j, k)
+            for i in range(0, m_p, 2)
+            for j in range(0, n_bp, 2)
+            for k in range(0, p_p, 2)
+        ]
+    else:
+        # Original order: i, j, k
+        tile_coords = [
+            (i, j, k)
+            for i in range(0, m_p, 2)
+            for j in range(0, p_p, 2)
+            for k in range(0, n_p, 2)
+        ]
 
     # Step 1: Load first tile only (no output yet)
     i0, j0, k0 = tile_coords[0]
@@ -159,10 +180,9 @@ async def matmul(dut, A, B, transpose=False, relu=False):
     for coord in tile_coords[1:]:
         i1, j1, k1 = coord
         A_next = A_padded[i1:i1+2, k1:k1+2].flatten().tolist()
-        B_next = B_padded[k1:k1+2, j1:j1+2].flatten().tolist()
-
+        B_next = B_padded[j1:j1+2, k1:k1+2].flatten().tolist() if transpose else B_padded[k1:k1+2, j1:j1+2].flatten().tolist()
         # Read output from previous tile while loading next
-        await accumulate_matrix_output(dut, results_large, i0, j0, transpose, relu, A_next, B_next)
+        await accumulate_matrix_output(dut, results_large, i0, j0, transpose, A_next, B_next)
 
         # Slide to next
         i0, j0, k0 = i1, j1, k1
@@ -170,13 +190,13 @@ async def matmul(dut, A, B, transpose=False, relu=False):
         B_block = B_next
 
     # Final tile read (no further input)
-    await accumulate_matrix_output(dut, results_large, i0, j0, transpose, relu)
+    await accumulate_matrix_output(dut, results_large, i0, j0, transpose)
 
     # Apply ReLU if enabled
     if relu:
         results_large = np.maximum(results_large, 0)
 
-    return results_large[:m, :p]
+    return results_large[:m, :n_b] if transpose else results_large[:m, :p]
 
 @cocotb.test()
 async def test_relu_transpose(dut):
@@ -185,13 +205,7 @@ async def test_relu_transpose(dut):
     cocotb.start_soon(clock.start())
 
     # Reset
-    dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 2)
-    dut.rst_n.value = 1
-    await ClockCycles(dut.clk, 2)
+    await reset_dut(dut)
 
     ## FIRST SET OF MATRICES
     A = [5, -6, 7, 8]  # row-major
@@ -226,17 +240,11 @@ async def test_large_matrices(dut):
     clock = Clock(dut.clk, 20, units="ns")
     cocotb.start_soon(clock.start())
     # Reset
-    dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 1)
-    dut.rst_n.value = 1
-    await ClockCycles(dut.clk, 1)
+    await reset_dut(dut)
 
     np.random.seed(42)  # For reproducibility
-    A = np.random.randint(-128, 128, size=(6, 4))
-    B = np.random.randint(-128, 128, size=(4, 5))
+    A = np.random.randint(-128, 127, size=(6, 4))
+    B = np.random.randint(-128, 127, size=(4, 5))
 
     dut._log.info(f"Testing matrix multiplication: A.shape={A.shape}, B.shape={B.shape}")
     dut._log.info(f"A:\n{A}")
@@ -245,6 +253,40 @@ async def test_large_matrices(dut):
     result = await matmul(dut, A, B, transpose=False, relu=False)
 
     check_expected(A, B, result)
+
+    print("First large matrix test passed")
+    
+    A = np.random.randint(-128, 127, size=(10, 8))
+    B = np.random.randint(-128, 127, size=(10, 8))
+
+    dut._log.info(f"Testing matrix multiplication: A.shape={A.shape}, B.shape={B.shape}")
+    dut._log.info(f"A:\n{A}")
+    dut._log.info(f"B:\n{B}")
+
+    ## Check pipeline flushing??
+
+    result = await matmul(dut, A, B, transpose=True, relu=False)
+
+    check_expected(A, B, result, transpose=True, relu=False)
+
+    print("Second large matrix test passed")
+
+    A = np.random.randint(-128, 127, size=(5, 5))
+    B = np.random.randint(-128, 127, size=(5, 5))
+
+    combinations = list(itertools.product([False, True], repeat=2))
+
+    for transpose, relu in combinations:
+        dut._log.info(f"Testing combination: transpose={transpose}, relu={relu}")
+        
+        # Reset DUT if needed
+        await reset_dut(dut)
+
+        result = await matmul(dut, A, B, transpose=transpose, relu=relu)
+
+        check_expected(A, B, result, transpose=transpose, relu=relu)
+
+        dut._log.info("Round passed")
 
     dut._log.info("Large matrix test passed!")
 
@@ -255,13 +297,7 @@ async def test_project(dut):
     cocotb.start_soon(clock.start())
 
     # Reset
-    dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 2)
-    dut.rst_n.value = 1
-    await ClockCycles(dut.clk, 2)
+    await reset_dut(dut)
 
     # ------------------------------
     # STEP 1: Load matrix A
