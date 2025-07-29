@@ -20,10 +20,12 @@ module mmu_feeder_tb ();
   wire clk;
   wire rst;
   wire en;
-  wire [2:0] mmu_cycle,
+  wire [2:0] mmu_cycle;
+
+  wire transpose;
 
   /* Memory module interface */
-  wire [7:0] weight0, weight1, weight2, weight3;
+	wire [7:0] weight0, weight1, weight2, weight3;
 
   wire [7:0] input0, input1, input2, input3;
 
@@ -47,6 +49,8 @@ module mmu_feeder_tb ();
     .rst(rst),
     .en(en),
     .mmu_cycle(mmu_cycle),
+
+    .transpose(transpose),
 
     .weight0(weight0),
     .weight1(weight1),
