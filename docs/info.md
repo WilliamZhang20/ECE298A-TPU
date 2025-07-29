@@ -21,6 +21,10 @@ Finally, to schedule the inputs and outputs to and from the systolic array, a fe
 
 ## System Architecture
 
+Overall block diagram: 
+
+![Alt text](ECE298A-TPU.png)
+
 ### The Processing Element
 
 |Signal Name        | Direction     | Blurb             |
@@ -141,7 +145,7 @@ This design ensures that matrix multiplication operations proceed automatically 
 
 ### The Matrix Unit Feeder
 
-The Matrix Unit Feeder (or MMU feeder) is the middle-man module between the control unit and the computational unit (MMU), facilitating smooth data flow between the internal components of the TPU and outputs to the host. When enabled, its role is to either feed the expected matrix data from host --> mmu, or to direct computed matrix outputs from MMU --> host; this is decided based on the mmu_cycle defined by the control unit.
+The Matrix Unit Feeder (in `mmu_feeder.v`) is the middle-man module between the control unit and the computational unit (MMU), facilitating smooth data flow between the internal components of the TPU and outputs to the host. When enabled, its role is to either feed the expected matrix data from host --> mmu, or to direct computed matrix outputs from MMU --> host; this is decided based on the mmu_cycle defined by the control unit.
 
 |Signal Name        | Direction | Width | Description                           |
 |-------------------|-----------|-------|---------------------------------------|
@@ -166,8 +170,6 @@ The weight and input matrices are taken from memory. The feeder will set the exp
 - **Cycle 5**: host_outdata = c11, done = 1, feeder goes idle until next round of inputs & computations
 
 For more details on timing relationships, see **Critical Timing Relationships** above, in the Control Unit section.
-<!--Specify input/output signals, internal functionality, etc.
---->
 
 ## How to test
 
@@ -199,8 +201,8 @@ The module will assume an order of input of A matrix values and B matrix values,
 An external microcontroller will send signals over the chip interface, including the clock signal, which will alow it to coordinate I/O on clock edges.
 
 ## Acknowledgements
+* William Zhang: Processing Elements, Systolic Array, General Design/Sythesis, Pipelining
 * Ethan Leung: Matrix Unit Feeder
 * Guhan Iyer: Unified Memory
-* William Zhang: Processing Elements, Systolic Array
 * Yash Karthik: Control Unit
 * ECE 298A Course Staff: Prof. John Long, Prof. Vincent Gaudet, Refik Yalcin
