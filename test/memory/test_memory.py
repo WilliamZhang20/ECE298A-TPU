@@ -7,7 +7,7 @@ async def reset_dut(dut, ncycles: int = 2):
     """Apply reset and idle default values."""
     dut._log.info("Applying reset")
     dut.rst.value = 1
-    dut.write_en.value = 0
+    dut.load_en.value = 0
     dut.addr.value = 0
     dut.in_data.value = 0
     await ClockCycles(dut.clk, ncycles)
@@ -16,11 +16,11 @@ async def reset_dut(dut, ncycles: int = 2):
 
 async def write_addr(dut, addr: int, data: int):
     """Single-cycle write helper (write occurs on the rising edge)."""
-    dut.write_en.value = 1
+    dut.load_en.value = 1
     dut.addr.value = addr & 0x7
     dut.in_data.value = data & 0xFF
     await ClockCycles(dut.clk, 1)
-    dut.write_en.value = 0
+    dut.load_en.value = 0
     await ClockCycles(dut.clk, 1)
 
 def snapshot_outputs(dut):
@@ -83,14 +83,14 @@ async def test_edge_addresses(dut):
         assert inputs[i] == 0, f"input{i}={inputs[i]}, expected 0 before write"
 
 @cocotb.test()
-async def test_write_enable_gating(dut):
-    """Writes should only occur when write_en == 1."""
+async def test_load_enable_gating(dut):
+    """Writes should only occur when load_en == 1."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
 
     await reset_dut(dut)
 
-    dut.write_en.value = 0
+    dut.load_en.value = 0
     dut.addr.value = 2
     dut.in_data.value = 0xDE
     await ClockCycles(dut.clk, 1)
@@ -198,13 +198,13 @@ async def test_write_during_reset_ignored(dut):
     cocotb.start_soon(clock.start())
 
     dut.rst.value = 1
-    dut.write_en.value = 1
+    dut.load_en.value = 1
     dut.addr.value = 0
     dut.in_data.value = 0x77
     await ClockCycles(dut.clk, 1)
 
     dut.rst.value = 0
-    dut.write_en.value = 0
+    dut.load_en.value = 0
     await ClockCycles(dut.clk, 1)
 
     weights, inputs = snapshot_outputs(dut)
@@ -212,20 +212,20 @@ async def test_write_during_reset_ignored(dut):
     assert inputs == [0, 0, 0, 0], f"inputs after write-during-reset: {inputs}"
 
 @cocotb.test()
-async def test_hold_write_en_and_stream(dut):
-    """Keep write_en high and change addr/data each cycle (burst write)."""
+async def test_hold_load_en_and_stream(dut):
+    """Keep load_en high and change addr/data each cycle (burst write)."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
 
     await reset_dut(dut)
 
     patterns = [0x11, 0x22, 0x33, 0x44, 0x99, 0x88, 0x77, 0x66]
-    dut.write_en.value = 1
+    dut.load_en.value = 1
     for addr, val in enumerate(patterns):
         dut.addr.value = addr
         dut.in_data.value = val
         await ClockCycles(dut.clk, 1)
-    dut.write_en.value = 0
+    dut.load_en.value = 0
     await ClockCycles(dut.clk, 1)
 
     weights, inputs = snapshot_outputs(dut)
@@ -234,7 +234,7 @@ async def test_hold_write_en_and_stream(dut):
 
 @cocotb.test()
 async def test_state_stability_without_writes(dut):
-    """After writing, hold signals steady without write_en and confirm state does not change."""
+    """After writing, hold signals steady without load_en and confirm state does not change."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
 
@@ -244,7 +244,7 @@ async def test_state_stability_without_writes(dut):
         await write_addr(dut, addr, val)
 
     weights_before, inputs_before = snapshot_outputs(dut)
-    dut.write_en.value = 0
+    dut.load_en.value = 0
     await ClockCycles(dut.clk, 10)
     weights_after, inputs_after = snapshot_outputs(dut)
 
