@@ -9,44 +9,46 @@ You can also include images in this folder and reference them in the markdown. E
 
 ## How it works
 
-This project is a small-scale matrix multiplier inspired by the Tensor Processing Unit (TPU), an AI inference ASIC developed by Google.
+This project is a small-scale matrix multiplier inspired by the Tensor Processing Unit (TPU), an AI inference accelerator ASIC developed by Google.
 
-It multiplies 2x2 matrices, each of which contain signed, 1-byte (8-bit) elements. It does so in a systolic array circuit, where flow of data is facilitated through the connections between a grid of 4 Multiply-Add-Accumulate (MAC) Processing Elements (PEs).
+It multiplies 2x2 signed 8-bit (1 byte) matrices to an output matrix with signed 16-bit (2-byte) elements. It does so in a systolic array circuit, where flow of data is facilitated through the connections between a grid of 4 Multiply-Add-Accumulate (MAC) Processing Elements (PEs).
 
 To store inputs prior to computation, it contains 2 matrices in memory registers, which occupy a total of 8 bytes.
 
 To orchestrate the flow of data between inputs, memory, and outputs, a control unit coordinates state transitions, loads, and stores automatically.
 
-Finally, to schedule the inputs and outputs to and from the systolic array, a feeder module closer to the matrix multiplier works with the control unit.
+Finally, a feeder module interfaces with the matrix multiplier to schedule the inputs and outputs to and from the systolic array.
 
 It is capable of running over 99.8 Million Operations Per Second when using streamed processing to perform block multiplication of a 20x10 and a 10x20 matrix. 
 
 ## System Architecture
 
+![Alt text](ECE298A-TPU.png)
+
 ### The Processing Element
 
-|Signal Name        | Direction     | Blurb             |
+Let's start from the most atomic element of the matrix multiplier unit (MMU): its processing element (PE). The value stored within each PE contributes an element to the output.
+
+|Signal Name        | Direction     | Description             |
 |-------------------|---------------|-------------------|
 |clk                | input         | The clock!        |
 |rst                | input         | Reset             |
 |clear              | input         | Clear PE          |
-|a_in               | input         | First input       |
+|a_in               | input         | Input value       |
 |a_out              | output        | Pass-on of input  |
 |b_in               | input         | Weight value      |
 |b_out              | output        | Pass-on of weight |
 |c_out              | output        | Accumulation      |
 
-Let's start from the most atomic element of the matrix multiplier unit (MMU): its processing element (PE). The value stored within each PE contributes an element to the output.
+Since each output element of a matrix multiplication is a sum of products, the PE's primary operation is a multiply-add-accumulate.
 
-Since each output element of a matrix multiplication is a sum of products, the PE's primary operation is a multiply add accumulate.
-
-It will taken in input terms `a_in` and `b_in`, multiply them, and then add them to an accumulator value `c_out`. Due to the larger values induced by multiplication, the accumulator holds more bits.
+It will take input terms `a_in` and `b_in`, multiply them, and then add them to the accumulator value `c_out`. Due to the larger values induced by multiplication, the accumulator holds more bits.
 
 Since adjacent PEs corresponding to adjacent elements of the output matrix need the same input and weight values, these input terms are sent to `a_out` and `b_out` respectively, which are connected to other PEs by the systolic array.
 
-Once the multiplication is done, the control unit will want to clear the PEs so that they can reset accumulation for the next matrix product, which is facilitated via the `clear` signal. 
+Once the multiplication is done, the control unit will want to clear the PEs so that they can reset the accumulation for the next matrix product, which is facilitated via the automatic `clear` signal. 
 
-On the other hand, it is non-ideal to reset the entire chip, as it wastes time (an entire clock cycle) and is overkill as it is unecessary to reset other elements.
+On the other hand, it is non-ideal to reset the entire chip, as it wastes time (an entire clock cycle) and is unnecessary to reset other elements such as memory.
 
 ### The Systolic Array
 
@@ -66,6 +68,8 @@ Block Diagram...
 
 ### Unified Memory
 
+The unified memory module (`memory.v`) is an on-chip store that holds both weight and input matrices for quick access to both values during computations.
+
 |Signal Name        | Direction | Width | Description                           |
 |-------------------|-----------|-------|---------------------------------------|
 |clk                | input     | 1     | System clock                          |
@@ -76,9 +80,15 @@ Block Diagram...
 |weight[0,1,2,3]    | output    | 8     | Weight matrices                       |
 |input[0,1,2,3]     | output    | 8     | Input matrices                        |
 
-The unified memory module (`memory.v`) is a dedicated memory unit that stores input matrices (both general inputs and weights) for quick access to both values during computations. The unit supports synchronous writes and asynchronous reads.
+Matrix elements are held internally within a 8x8 register (`sram`). In terms of outputs, `sram[0..3]` maps to `weight[0..3]`, `sram[4..7]` maps to `input[0..3]`. An address (`addr`) is generated by the control unit to correctly load elements into the internal register.
+
+When `write_en` goes high, the current element (`in_data`) is loaded into memory at its specified address, on a rising edge. 
+
+Outputs are asynchronously written from the internal register to their specified port, and become visible at the outputs for the rest of the datapath.
 
 ### Control Unit
+
+The control unit (`control_unit.v`) serves as the central orchestrator for the entire TPU, coordinating the flow of data between memory, the systolic array, and output collection through a carefully designed finite state machine (FSM).
 
 |Signal Name        | Direction | Width | Description                           |
 |-------------------|-----------|-------|---------------------------------------|
@@ -89,9 +99,7 @@ The unified memory module (`memory.v`) is a dedicated memory unit that stores in
 |mmu_en             | output    | 1     | Enable signal for MMU operations      |
 |mmu_cycle          | output    | 3     | Current cycle count for MMU timing    |
 
-The control unit (`control_unit.v`) serves as the central orchestrator for the entire TPU, coordinating the flow of data between memory, the systolic array, and output collection through a carefully designed finite state machine (FSM).
-
-**State Machine Architecture**
+#### State Machine Architecture
 
 The control unit implements a 3-state FSM that manages the complete matrix multiplication pipeline:
 
@@ -101,7 +109,7 @@ The control unit implements a 3-state FSM that manages the complete matrix multi
 
 3. **S_MMU_FEED_COMPUTE_WB (2'b10)**: The computation and output phase where the systolic array performs matrix multiplication and results are made available for collection.
 
-**Orchestration Logic**
+#### Orchestration Logic
 
 The control unit coordinates several critical functions:
 
@@ -114,7 +122,7 @@ The control unit coordinates several critical functions:
 
 **Pipeline Coordination**: The `mmu_en` signal (`control_unit.v:12`) acts as the master enable for the entire computation pipeline, transitioning from low during loading to high during computation phases.
 
-**Critical Timing Relationships**
+#### Critical Timing Relationships
 
 The control unit implements sophisticated timing logic based on the systolic array's computational pipeline:
 
@@ -125,14 +133,14 @@ The control unit implements sophisticated timing logic based on the systolic arr
 - **Cycle 4**: Final result (c11) becomes available
 - **Cycle 5**: All outputs remain stable, then system returns to idle
 
-**State Transition Logic**
+#### State Transition Logic
 
 State transitions are triggered by specific conditions:
 - `S_IDLE → S_LOAD_MATS`: When `load_en` is asserted (`control_unit.v:30-32`)
 - `S_LOAD_MATS → S_MMU_FEED_COMPUTE_WB`: When all 8 elements are loaded (`mat_elems_loaded == 3'b111`) (`control_unit.v:37-38`)
 - `S_MMU_FEED_COMPUTE_WB → S_IDLE`: After 5 computation cycles (`mmu_cycle == 3'b101`) (`control_unit.v:52-53`)
 
-**Integration with Other Modules**
+#### Integration with Other Modules
 
 The control unit interfaces with all major TPU components:
 - **Memory Module**: Provides addressing (`mem_addr`) and coordinates write operations during loading
@@ -143,7 +151,7 @@ This design ensures that matrix multiplication operations proceed automatically 
 
 ### The Matrix Unit Feeder
 
-The Matrix Unit Feeder (or MMU feeder) is the middle-man module between the control unit and the computational unit (MMU), facilitating smooth data flow between the internal components of the TPU and outputs to the host. When enabled, its role is to either feed the expected matrix data from host --> mmu, or to direct computed matrix outputs from MMU --> host; this is decided based on the mmu_cycle defined by the control unit.
+The Matrix Unit Feeder (in `mmu_feeder.v`) is the middle-man module between the control unit and the computational unit (MMU), facilitating smooth data flow between the internal components of the TPU and outputs to the host. When enabled, its role is to either feed the expected matrix data from host --> mmu, or to direct computed matrix outputs from MMU --> host; this is decided based on the mmu_cycle defined by the control unit.
 
 |Signal Name        | Direction | Width | Description                           |
 |-------------------|-----------|-------|---------------------------------------|
@@ -168,14 +176,12 @@ The weight and input matrices are taken from memory. The feeder will set the exp
 - **Cycle 5**: host_outdata = c11, done = 1, feeder goes idle until next round of inputs & computations
 
 For more details on timing relationships, see **Critical Timing Relationships** above, in the Control Unit section.
-<!--Specify input/output signals, internal functionality, etc.
---->
 
 ## How to test
 
 Notation: the matrix element A_xy denotes a value in the xth row and yth column of the matrix A.
 
-The module will assume an order of input of A matrix values and B matrix values, and outputs. That is, it is expected that inputs come in order of A00, A01, A10, A11, B00, B01, B10, B11, and the outputs will come in the order of C00, C01, C10, C11. This keeps it simple.
+The module will assume an order of input of A matrix values and B matrix values, and outputs. That is, it is expected that inputs come in order of A00, A01, A10, A11, B00, B01, B10, B11, and the outputs will come in the order of C00, C01, C10, C11. This keeps the chip simple and avoids extra logic/user input.
 
 ### Setup
 
@@ -189,16 +195,35 @@ The module will assume an order of input of A matrix values and B matrix values,
     - Perform a reset by pulling the `rst_n` pin low to 0, and waiting for a single clock signal before pulling it back high to 1. This sets initial state values.
 2. Initial Matrix Load
     - Load 8 matrix elements into the chip, one per cycle. For example, if your matrices are [[1, 2], [3, 4]], [[5, 6], [7, 8]], you would load in the row-major, first-matrix-first order of 1, 2, 3, 4, 5, 6, 7, 8. This occurs by setting the 8 `ui_in` pins to the 8-bit value of the set matrix element, and waiting one clock cycle before the next can be loaded.
-3. Collect Output
-    - Thanks to the aggressive pipelining implemented in the chip, once the matrices are already loaded, you can start collecting output!
-    - Output elements will come one per cycle. So you would wait for a single clock edge, and then read the `uo_out` pin for the 8-bit output value. At the next clock edge, the value of `uo_out` will change to the next element in the order of c_00, c_01, c_10, c_11.
-    - For the above example, the output would be in the order of [19, 22, 43, 50], starting from the cycle right after you finish your last load.
+3. Collect Output & Send Next Inputs
+    - Thanks to the aggressive pipelining implemented in the chip, once the matrices are loaded, you can already start collecting output!
+    - Output elements will be 16 bits each, but since the output port is only 8 bits, one element is output in 2 cycles, with the upper half (bits 15 - 8) in the first cycle, and the lower half (bits 7 - 0) in the second cycle.
+    - To collect outputs, wait for a single clock edge, and then read the `uo_out` pin for the 8-bit value. Repeat again to get the full 16-bit value. Overall, the matrix output at `uo_out` will be in the order of c_00, c_01, c_10, c_11, taking 8 cycles to output 4 elements.
+    - For the above example, the output would be in the order of [19, 22, 43, 50], starting from the cycle right after you finish your last load, and ending 8 cycles afterwards.
+    - To maximize throughput, it is also recommended that in those same 8 cycles, the next 2 input matrices are sent to the `ui_in` pin. That will be 1 element per cycle for 2 serial, row-major 2x2 matrix inputs, for 8 cycles total.
 4. Repeat
-    - Load 8 more input values, collect 4 outputs, rinse & repeat!
+    - If the optimal choice was taken to input the next matrix inputs during the output cycles, then right after taking the first output, you can take the output of the second product. That second product is from the matrices input during the first output round.
+    - That way, both input and output ports are fully utilized, and throughput is maxed out on the chip!
+    - In other words, inputting the next matrices while reading outputs of the previous inputs is exploiting the chip's streaming processing capabilities.
+5. Input Options
+    - Note that if new matrices are not input during the output cycle, i.e. the `ui_in` pin is set to 0, then it is the equivalent of     "flushing the pipeline", as once the output is complete, it is the equivalent of starting at step 2.
+
+### Matrix Multiplication Options
+
+The example shown above is a very simple and plain 2x2 matrix multiplication. However, this TPU chip offers additional options. 
+
+The first is the ability to compute the product $$AB^T$$, which is the first matrix multiplied by the transpose of the second. Simply setting the `uio_in` pin at index 1 to active high before or during the input of the second matrix will multiplex the order in which the elements are fed into the systolic array. This ultimately feeds the transpose of the second matrix into the product. 
+- The benefit of using the chip's implementation is that it saves time computing a transpose in a CPU instruction in O(n^2) time, where n is a rough measure of the matrix dimension. Using the chip's implementation, it is fused with the entire process, taking no extra time.
+
+The second is the ability to run the Rectified Linear Unit (ReLU) activation function, commonly seen in neural networks for approximating non-linear patterns in data. 
+
+The third, which is provided as a software interface option in the `test/tpu/test_tpu.py` Python script's `matmul` function, is the ability to multiply bigger matrices, of all compatible dimensions, in 2x2 blocks. This will run the chip multiple times in a streaming fashion. If the matrix dimensions are odd, since the block size is even, it will pad zeros and then truncate the output matrix back to size. 
+
+The cool thing is that with the blocked `matmul`, you can also exploit the fused transpose within blocks, adding no extra time for $$AB^T$$. However, there are only two limits: 1) The input matrix elements can only range from -128 to 127, and 2) The fused ReLU is not doable within individual blocks, as it is nonlinear and cannot be distributed within the block sums. Therefore, the software must incur a cost at the end to apply any nonlinear activation function. 
 
 ## External hardware
 
-An external microcontroller will send signals over the chip interface, including the clock signal, which will alow it to coordinate I/O on clock edges.
+An external microcontroller will send signals over the chip interface, including the clock signal, which will allow it to coordinate I/O on clock edges.
 
 ## Acknowledgements
 * William Zhang: Processing Elements, Systolic Array, General Design/Synthesis, Pipelining
