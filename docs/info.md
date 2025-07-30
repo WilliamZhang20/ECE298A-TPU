@@ -19,6 +19,8 @@ To orchestrate the flow of data between inputs, memory, and outputs, a control u
 
 Finally, to schedule the inputs and outputs to and from the systolic array, a feeder module closer to the matrix multiplier works with the control unit.
 
+It is capable of running over 99.8 Million Operations Per Second when using streamed processing to perform block multiplication of a 20x10 and a 10x20 matrix. 
+
 ## System Architecture
 
 ### The Processing Element
@@ -199,7 +201,7 @@ The module will assume an order of input of A matrix values and B matrix values,
 An external microcontroller will send signals over the chip interface, including the clock signal, which will alow it to coordinate I/O on clock edges.
 
 ## Acknowledgements
-* William Zhang: Processing Elements, Systolic Array, General Design/Sythesis, Pipelining
+* William Zhang: Processing Elements, Systolic Array, General Design/Synthesis, Pipelining
 * Ethan Leung: Matrix Unit Feeder
 * Guhan Iyer: Unified Memory
 * Yash Karthik: Control Unit
