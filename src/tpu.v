@@ -35,7 +35,7 @@ module tt_um_tpu (
     wire [7:0] a_data0, b_data0, a_data1, b_data1;
 
     wire done;
-    wire state;
+    wire [1:0] state;
 
     // Module Instantiations
     memory mem (
@@ -95,8 +95,8 @@ module tt_um_tpu (
     );
 
     assign uo_out = out_data;
-    assign uio_out = {done, 7'b0};
-    assign uio_oe = 8'b10000000;
+    assign uio_out = {done, state, 5'b0};
+    assign uio_oe = 8'b11100000;
 
     wire _unused = &{ena, uio_in[7:3]};
 

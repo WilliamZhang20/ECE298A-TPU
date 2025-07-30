@@ -46,14 +46,20 @@ module control_unit (
             
             S_MMU_FEED_COMPUTE_WB:
                 next_state = S_MMU_FEED_COMPUTE_WB;
-               /* Cycle 0: Start feeding data (a00×b00 starts)
+               /* MMU CYCLE PATTERN
+                * Cycle 0: Start feeding data (a00×b00 starts)
                 * Cycle 1: First partial products computed, more data fed
-                * Cycle 2: c00 ready (a00×b00 + a01×b10), can be output
-                * Cycle 3: c01 and c10 ready simultaneously:
+                * Cycle 2: c00 ready (a00×b00 + a01×b10), is output, while take in next a00
+                * Cycle 3: c01 and c10 ready simultaneously, read next a01:
                 *          c01 = a00×b01 + a01×b11
                 *          c10 = a10×b00 + a11×b10
-                * Cycle 4: c11 ready (a10×b01 + a11×b11), can be output
-                * Cycle 5: All outputs remain valid
+                * Cycle 4: c11 ready (a10×b01 + a11×b11), read next a10
+                * Cycle 5: All outputs remain valid, read next a11
+                * Cycle 6: Keep outputting, read next b00
+                * Cycle 7: Keep outputting, read next b01
+                * Back to cycle 0: Start feeding data (a00×b00 starts), keep outputting, read next b10
+                * Cycle 1: First partial products computed, keep outputting, read next b01
+                * Cycle 2: c00 ready, begin output, take in next a00, pattern continues...
                 */
 
 			default: begin
@@ -87,7 +93,7 @@ module control_unit (
                 S_LOAD_MATS: begin
                     if (load_en) begin
                         mat_elems_loaded <= mat_elems_loaded + 1;
-                        mem_addr <= mat_elems_loaded + 1;
+                        mem_addr <= mem_addr + 1;
                     end
 
                     if (mat_elems_loaded == 3'b101) begin
@@ -111,7 +117,7 @@ module control_unit (
                         mat_elems_loaded <= mat_elems_loaded + 1;
                         mem_addr <= mat_elems_loaded + 1;
                     end
-					mmu_cycle <= mmu_cycle + 1;
+					mmu_cycle <= mmu_cycle + 1; // allow mmu_cycle to continue incrementing, permitting a pipeline flush
                     if (mmu_cycle == 3'b111) begin
                         mmu_cycle <= 0;
                     end else if (mmu_cycle == 1) begin
