@@ -2,6 +2,7 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 import numpy as np
+from cocotb.utils import get_sim_time
 import itertools
 
 async def reset_dut(dut):
@@ -85,9 +86,7 @@ def check_expected(A, B, result, transpose=0, relu=0):
     """
     Check DUT results against expected matrix multiplication, for big matrices
     """
-    print("The result from custom kernel\n", result)
     expected = get_expected_large_matmul(A, B, transpose, relu)
-    print("Expected result from NumPy\n", expected)
     np.testing.assert_array_equal(result, expected, err_msg="Matrix multiplication result does not match expected")
 
 async def accumulate_matrix_output(dut, results_large, i, j, transpose=0, A_block=None, B_block=None):
@@ -236,6 +235,7 @@ async def test_relu_transpose(dut):
 
 @cocotb.test()
 async def test_large_matrices(dut):
+    # ALSO MEASURES OPERATIONS PER SECOND
     dut._log.info("Start")
     clock = Clock(dut.clk, 20, units="ns")
     cocotb.start_soon(clock.start())
@@ -245,29 +245,32 @@ async def test_large_matrices(dut):
     np.random.seed(42)  # For reproducibility
     A = np.random.randint(-128, 127, size=(6, 4))
     B = np.random.randint(-128, 127, size=(4, 5))
-
-    dut._log.info(f"Testing matrix multiplication: A.shape={A.shape}, B.shape={B.shape}")
-    dut._log.info(f"A:\n{A}")
-    dut._log.info(f"B:\n{B}")
-
+    
     result = await matmul(dut, A, B, transpose=False, relu=False)
 
     check_expected(A, B, result)
 
-    print("First large matrix test passed")
+    dut._log.info("First large matrix test passed")
     
-    A = np.random.randint(-128, 127, size=(10, 8))
-    B = np.random.randint(-128, 127, size=(10, 8))
+    A = np.random.randint(-128, 127, size=(20, 10))
+    B = np.random.randint(-128, 127, size=(10, 20))
 
-    dut._log.info(f"Testing matrix multiplication: A.shape={A.shape}, B.shape={B.shape}")
-    dut._log.info(f"A:\n{A}")
-    dut._log.info(f"B:\n{B}")
+    start_time = get_sim_time(units="ns")  # or "ps", "us", etc.
 
-    ## Check pipeline flushing??
+    ## Check pipeline flushing?? (because matmul goes back to load_matrix...)
+    result = await matmul(dut, A, B, transpose=False, relu=False)
 
-    result = await matmul(dut, A, B, transpose=True, relu=False)
+    end_time = get_sim_time(units="ns")
+    elapsed_ns = (end_time - start_time) * 1e-9
 
-    check_expected(A, B, result, transpose=True, relu=False)
+    m, k = A.shape
+    _, n = B.shape
+    total_ops = 2 * m * k * n
+    print("Total ops", total_ops)
+    iops = total_ops / elapsed_ns
+    dut._log.info(f"Measured {iops} operations per second")
+
+    check_expected(A, B, result, transpose=False, relu=False)
 
     print("Second large matrix test passed")
 

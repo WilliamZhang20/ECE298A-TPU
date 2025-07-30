@@ -50,12 +50,23 @@ all:
 	$(MAKE) test-memory
 	$(MAKE) test-systolic-array
 	$(MAKE) test-control-unit
+	$(MAKE) test-mmu-feeder
 
 test-top:
 	$(MAKE) clean
 	$(MAKE) sim \
 		TOPLEVEL=tb \
 		MODULE=test_tpu \
+		VERILOG_SOURCES="$(WAVES_ROOT)/tpu/tb.v $(addprefix $(SRC_DIR)/,tpu.v systolic_array_2x2.v PE.v mmu_feeder.v control_unit.v memory.v)" \
+		PYTHONPATH=$(WAVES_ROOT)/tpu \
+		WAVES_DIR=$(WAVES_ROOT)/tpu/wave \
+		COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/tpu/wave/tpu_tb_$(TIMESTAMP).vcd\""'
+
+test-nn:
+	$(MAKE) clean
+	$(MAKE) sim \
+		TOPLEVEL=tb \
+		MODULE=neural_inference \
 		VERILOG_SOURCES="$(WAVES_ROOT)/tpu/tb.v $(addprefix $(SRC_DIR)/,tpu.v systolic_array_2x2.v PE.v mmu_feeder.v control_unit.v memory.v)" \
 		PYTHONPATH=$(WAVES_ROOT)/tpu \
 		WAVES_DIR=$(WAVES_ROOT)/tpu/wave \

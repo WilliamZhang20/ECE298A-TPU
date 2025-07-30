@@ -3,7 +3,7 @@
 module memory (
     input wire clk,
     input wire rst,
-    input wire write_en,
+    input wire load_en,
     input wire [2:0] addr, // MSB selects matrix (0: weights, 1: inputs), [1:0] selects element
     input wire [7:0] in_data, // Fixed from reg to wire to match tt_um_tpu.v
     output wire [7:0] weight0, weight1, weight2, weight3, // 2x2 matrix A elements, 1 byte each
@@ -18,10 +18,9 @@ module memory (
             for (i = 0; i < 8; i = i + 1) begin
                 sram[i] <= 8'b0;
             end
-        end else if (write_en) begin
+        end else if (load_en) begin
             sram[addr] <= in_data;
         end
-
     end
 
     // asynchronous read

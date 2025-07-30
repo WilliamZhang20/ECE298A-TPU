@@ -35,12 +35,13 @@ module tt_um_tpu (
     wire [7:0] a_data0, b_data0, a_data1, b_data1;
 
     wire done;
+    wire [1:0] state;
 
     // Module Instantiations
     memory mem (
         .clk(clk),
         .rst(~rst_n),
-        .write_en(load_en),
+        .load_en(load_en),
         .addr(mem_addr),
         .in_data(ui_in),
         .weight0(weight0), .weight1(weight1), .weight2(weight2), .weight3(weight3),
@@ -53,7 +54,8 @@ module tt_um_tpu (
         .load_en(load_en),
         .mem_addr(mem_addr),
         .mmu_en(mmu_en),
-        .mmu_cycle(mmu_cycle)
+        .mmu_cycle(mmu_cycle),
+        .state_out(state)
     );
 
     systolic_array_2x2 mmu (
@@ -93,8 +95,8 @@ module tt_um_tpu (
     );
 
     assign uo_out = out_data;
-    assign uio_out = {done, 7'b0};
-    assign uio_oe = 8'b10000000;
+    assign uio_out = {done, state, 5'b0};
+    assign uio_oe = 8'b11100000;
 
     wire _unused = &{ena, uio_in[7:3]};
 
