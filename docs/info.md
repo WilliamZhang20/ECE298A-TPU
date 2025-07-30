@@ -212,14 +212,14 @@ The module will assume an order of input of A matrix values and B matrix values,
 
 The example shown above is a very simple and plain 2x2 matrix multiplication. However, this TPU chip offers additional options. 
 
-The first is the ability to compute the product $$AB^T$$, which is the first matrix multiplied by the transpose of the second. Simply setting the `uio_in` pin at index 1 to active high before or during the input of the second matrix will multiplex the order in which the elements are fed into the systolic array. This ultimately feeds the transpose of the second matrix into the product. 
-- The benefit of using the chip's implementation is that it saves time computing a transpose in a CPU instruction in O(n^2) time, where n is a rough measure of the matrix dimension. Using the chip's implementation, it is fused with the entire process, taking no extra time.
+The first is the ability to compute the product $AB^T$, which is the first matrix multiplied by the transpose of the second. Simply setting the `uio_in` pin at index 1 to active high before or during the input of the second matrix will multiplex the order in which the elements are fed into the systolic array. This ultimately feeds the transpose of the second matrix into the product. 
+- The benefit of using the chip's implementation is that it saves time computing a transpose taken by a CPU instruction in $O(n^2)$ time, where n is a rough measure of the matrix dimension. Instead, it is fused with the entire process, taking no extra time.
 
 The second is the ability to run the Rectified Linear Unit (ReLU) activation function, commonly seen in neural networks for approximating non-linear patterns in data. 
 
 The third, which is provided as a software interface option in the `test/tpu/test_tpu.py` Python script's `matmul` function, is the ability to multiply bigger matrices, of all compatible dimensions, in 2x2 blocks. This will run the chip multiple times in a streaming fashion. If the matrix dimensions are odd, since the block size is even, it will pad zeros and then truncate the output matrix back to size. 
 
-The cool thing is that with the blocked `matmul`, you can also exploit the fused transpose within blocks, adding no extra time for $$AB^T$$. However, there are only two limits: 1) The input matrix elements can only range from -128 to 127, and 2) The fused ReLU is not doable within individual blocks, as it is nonlinear and cannot be distributed within the block sums. Therefore, the software must incur a cost at the end to apply any nonlinear activation function. 
+The cool thing is that with the blocked `matmul`, you can also exploit the fused transpose within blocks, adding no extra time for $AB^T$. However, there are only two limits: 1) The input matrix elements can only range from -128 to 127, and 2) The fused ReLU is not doable within individual blocks, as it is nonlinear and cannot be distributed within the block sums. Therefore, the software must incur a cost at the end to apply any nonlinear activation function. 
 
 ## External hardware
 
