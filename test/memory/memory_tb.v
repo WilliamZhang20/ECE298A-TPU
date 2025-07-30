@@ -17,7 +17,7 @@ module memory_tb ();
 	// Inputs
 	reg clk;
 	reg rst;
-	reg write_en;
+	reg load_en;
 	reg [2:0] addr;
 	reg [7:0] in_data;
 
@@ -29,7 +29,7 @@ module memory_tb ();
 	memory dut (
 		.clk(clk),
 		.rst(rst),
-		.write_en(write_en),
+		.load_en(load_en),
 		.addr(addr),
 		.in_data(in_data),
 		.weight0(weight0),

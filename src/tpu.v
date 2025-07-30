@@ -41,7 +41,7 @@ module tt_um_tpu (
     memory mem (
         .clk(clk),
         .rst(~rst_n),
-        .write_en(load_en),
+        .load_en(load_en),
         .addr(mem_addr),
         .in_data(ui_in),
         .weight0(weight0), .weight1(weight1), .weight2(weight2), .weight3(weight3),
