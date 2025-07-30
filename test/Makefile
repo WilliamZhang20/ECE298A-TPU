@@ -50,6 +50,7 @@ all:
 	$(MAKE) test-memory
 	$(MAKE) test-systolic-array
 	$(MAKE) test-control-unit
+	$(MAKE) test-mmu-feeder
 
 test-top:
 	$(MAKE) clean
