@@ -14,6 +14,7 @@ PROJECT_SOURCES = tpu.v \
 					systolic_array_2x2.v \
 					control_unit.v \
 					PE.v \
+					delay_cell.v \
 					mmu_feeder.v \
 					memory.v
 
@@ -57,7 +58,7 @@ test-top:
 	$(MAKE) sim \
 		TOPLEVEL=tb \
 		MODULE=test_tpu \
-		VERILOG_SOURCES="$(WAVES_ROOT)/tpu/tb.v $(addprefix $(SRC_DIR)/,tpu.v systolic_array_2x2.v PE.v mmu_feeder.v control_unit.v memory.v)" \
+		VERILOG_SOURCES="$(WAVES_ROOT)/tpu/tb.v $(addprefix $(SRC_DIR)/,tpu.v delay_cell.v systolic_array_2x2.v PE.v mmu_feeder.v control_unit.v memory.v)" \
 		PYTHONPATH=$(WAVES_ROOT)/tpu \
 		WAVES_DIR=$(WAVES_ROOT)/tpu/wave \
 		COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/tpu/wave/tpu_tb_$(TIMESTAMP).vcd\""'
@@ -67,7 +68,7 @@ test-nn:
 	$(MAKE) sim \
 		TOPLEVEL=tb \
 		MODULE=neural_inference \
-		VERILOG_SOURCES="$(WAVES_ROOT)/tpu/tb.v $(addprefix $(SRC_DIR)/,tpu.v systolic_array_2x2.v PE.v mmu_feeder.v control_unit.v memory.v)" \
+		VERILOG_SOURCES="$(WAVES_ROOT)/tpu/tb.v $(addprefix $(SRC_DIR)/,tpu.v delay_cell.v systolic_array_2x2.v PE.v mmu_feeder.v control_unit.v memory.v)" \
 		PYTHONPATH=$(WAVES_ROOT)/tpu \
 		WAVES_DIR=$(WAVES_ROOT)/tpu/wave \
 		COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/tpu/wave/tpu_tb_$(TIMESTAMP).vcd\""'

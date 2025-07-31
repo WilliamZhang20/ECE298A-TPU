@@ -37,6 +37,10 @@ module tt_um_tpu (
     wire done;
     wire [1:0] state;
 
+    wire [7:0] stage1;
+    wire [7:0] stage2;
+    wire [7:0] stage3;
+
     // Module Instantiations
     memory mem (
         .clk(clk),
@@ -94,7 +98,15 @@ module tt_um_tpu (
         .host_outdata(out_data)
     );
 
-    assign uo_out = out_data;
+    genvar i;
+    generate
+        for (i = 0; i < 8; i = i + 1) begin : buf_loop
+            (* dont_touch = "true" *) buffer buf1 (.A(out_data[i]), .X(stage1[i]));
+            (* dont_touch = "true" *) buffer buf2 (.A(stage1[i]), .X(stage2[i]));
+            (* dont_touch = "true" *) buffer buf3 (.A(stage2[i]), .X(stage3[i]));
+        end
+    endgenerate
+    assign uo_out = stage3;
     assign uio_out = {done, state, 5'b0};
     assign uio_oe = 8'b11100000;
 
