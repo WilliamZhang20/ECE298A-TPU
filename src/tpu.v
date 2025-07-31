@@ -101,9 +101,9 @@ module tt_um_tpu (
     genvar i;
     generate
         for (i = 0; i < 8; i = i + 1) begin : buf_loop
-            (* dont_touch = "true" *) buffer buf1 (.A(out_data[i]), .X(stage1[i]));
-            (* dont_touch = "true" *) buffer buf2 (.A(stage1[i]), .X(stage2[i]));
-            (* dont_touch = "true" *) buffer buf3 (.A(stage2[i]), .X(stage3[i]));
+            (* keep *) buffer buf1 (.A(out_data[i]), .X(stage1[i]));
+            (* keep *) buffer buf2 (.A(stage1[i]), .X(stage2[i]));
+            (* keep *) buffer buf3 (.A(stage2[i]), .X(stage3[i]));
         end
     endgenerate
     assign uo_out = stage3;
