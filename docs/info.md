@@ -143,6 +143,10 @@ The control unit coordinates several critical functions:
 
 However, if the user chooses not to write new inputs during the output phase, the outputs continue unabated, and the systolic array matrix accumulators automatically reset once the outputs are complete.
 
+**Streamed Processing**: During the 8-cycle output phase, the chip is available to take in 8 new input bytes provided at the `ui_in` ports. This is streaming, as the input and output ports will henceforth be constantly used. After this 8-cycle output phase, the input bytes input during that phase can now begin outputting, while subsequent inputs can be further written.
+
+However, if the user chooses not to write new inputs during the output phase, the outputs continue unabated, and the systolic array matrix accumulators automatically reset once the outputs are complete.
+
 #### Critical Timing Relationships
 
 The control unit implements sophisticated timing logic based on the systolic array's computational pipeline:
@@ -172,6 +176,7 @@ The control unit implements sophisticated timing logic based on the systolic arr
 State transitions are triggered by specific conditions:
 - `S_IDLE → S_LOAD_MATS`: When `load_en` is asserted (`control_unit.v:30-32`)
 - `S_LOAD_MATS → S_MMU_FEED_COMPUTE_WB`: When all 8 elements are loaded (`mem_addr == 3'b111`) (`control_unit.v:37-38`)
+- `S_LOAD_MATS → S_MMU_FEED_COMPUTE_WB`: When all 8 elements are loaded (`mat_elems_loaded == 3'b111`) (`control_unit.v:37-38`)
 - Afterwards, the state machine stays in `S_MMU_FEED_COMPUTE_WB`, but essentially cycles through counts of `mem_addr` and `mmu_cycle` to keep track of the memory address writing for streamed processing and maintain a rhythm for the Matrix Unit Feeder.
 
 #### Integration with Other Modules
@@ -276,8 +281,6 @@ The first is the ability to compute the product $AB^T$, which is the first matri
 The second is the ability to run the Rectified Linear Unit (ReLU) activation function, commonly seen in neural networks for approximating non-linear patterns in data. 
 
 The third, which is provided as a software interface option in the `test/tpu/test_tpu.py` Python script's `matmul` function, is the ability to multiply bigger matrices, of all compatible dimensions, in 2x2 blocks. This will run the chip multiple times in a streaming fashion. If the matrix dimensions are odd, since the block size is even, it will pad zeros and then truncate the output matrix back to size. 
-
-The cool thing is that with the blocked `matmul`, you can also exploit the fused transpose within blocks, adding no extra time for $AB^T$. However, there are only two limits: 
 
 1) The input matrix elements can only range from -128 to 127, and:
     
