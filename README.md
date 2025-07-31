@@ -1,41 +1,75 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# Tiny Tapeout Verilog Project Template
+# Tiny Tapeout Verilog Tensor Processing Unit
 
 - [Read the documentation for project](docs/info.md)
 
-## What is Tiny Tapeout?
+## Overview: Verilog Matrix Multiply Accelerator
 
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
+This project implements a small-scale, hardware-efficient Tensor Processing Unit (TPU) that performs 2×2 signed matrix multiplications using a systolic array of Multiply-Accumulate (MAC) units. It is designed in Verilog and deployable via the Tiny Tapeout ASIC flow.
 
-To learn more and get started, visit https://tinytapeout.com.
+## Key Features
 
-## Set up your Verilog project
+- **Systolic Array:** A 2×2 grid of MAC units propagates data left-to-right and top-to-bottom, emulating a systolic matrix multiplication engine.
+- **Signed 8-bit Inputs, 16-bit Outputs:** Handles signed integers (-128 to 127) and accumulates products in 16-bit precision.
+- **Streaming Input/Output:** Supports pipelined loading and output to achieve >99.8M operations/sec.
+- **Control FSM:** Automates input loading, matrix multiplication timing, and result collection.
+- **Optional Features:** On-chip fused matrix transpose (`Bᵀ`) and ReLU activation.
 
-1. Add your Verilog files to the `src` folder.
-2. Edit the [info.yaml](info.yaml) and update information about your project, paying special attention to the `source_files` and `top_module` properties. If you are upgrading an existing Tiny Tapeout project, check out our [online info.yaml migration tool](https://tinytapeout.github.io/tt-yaml-upgrade-tool/).
-3. Edit [docs/info.md](docs/info.md) and add a description of your project.
-4. Adapt the testbench to your design. See [test/README.md](test/README.md) for more information.
+---
 
-The GitHub action will automatically build the ASIC files using [OpenLane](https://www.zerotoasiccourse.com/terminology/openlane/).
+## System Architecture
 
-## Enable GitHub actions to build the results page
+![Block Diagram](docs/ECE298A-TPU.png)
 
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
+**Subsystems:**
+- **Processing Element (PE):** Executes MAC operations and propagates intermediate values.
+- **Systolic Array (MMU):** A mesh of 4 PEs wired in systolic fashion.
+- **Unified Memory:** 8-byte register bank storing both input and weight matrices.
+- **Control Unit:** Finite-state machine (FSM) handles sequencing and pipelined computation.
+- **MMU Feeder:** Schedules data flow between memory, computation, and output.
 
-## Resources
+## Pin Configuration
 
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
+### Dedicated Input Pins ui_in[7:0]
 
-## What next?
+Is the primary port for inputting matrices used as operands in the product.
 
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
+### Dedicated Output Pins uo_out[7:0]
+
+8-bit half-sections of signed 16-bit elements of the 2x2 output matrix.
+
+### Bidirectional GPIO Pins
+
+- Index 0 - enabling the loading of elements at dedicated inputs into memory for computation
+- Index 1 - enabling fused transpose of second operand in the product.
+- Index 2 - enabling the application of Rectified Linear Unit (ReLU) activation at the output
+
+### Control Signals
+- Reset rst_n: Active low reset
+- Clock clk: System timing (50 MHz)
+
+## Operation
+1. Initial Load: loading two 2x2 matrices (8 cycles)
+2. Continuous streaming: while taking output of the matrices input in 1, the chip allows overlapped input of the next matrices
+
+## How to test
+
+See the test directory README for detailed instructions on running pre-silicon tests.
+
+### Available test targets
+
+```bash
+cd test
+
+# Run individual module tests
+make test-top     # complete system
+make test-memory  # memory unit
+make test-systolic-array  # systolic array integrity
+make test-control-unit  # control unit
+make test-mmu-feeder  # matrix unit feeder
+make test-nn # test neural network inference through the chip!!!
+
+# Run all tests
+make
+```
