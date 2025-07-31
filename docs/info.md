@@ -62,7 +62,8 @@ The output is 16 bits for the 8-bit inputs, to account for the property of multi
 |activation         | input         |1        | Enables ReLU                    |
 |a_data0            | input         |8        | Input value of top-left PE      |
 |a_data1            | input         |8        | Input value of bottom-left PE   |
-|b_out              | output        |8        | Weight value of top-left PE     |
+|b_data0            | input         |8        | Input value of top-left PE      |
+|b_data1            | input         |8        | Input value of top-right PE     |
 |c00                | output        |16       | Top-left output value           |
 |c01                | output        |16       | Top-right output value          |
 |c10                | output        |16       | Bottom-left output value        |
@@ -78,9 +79,7 @@ The extra values beyond 2x2 for input & weight matrix values are to allow the PE
 
 At each clock cycle, elements will flow between the PEs. The inputs will flow from "left to right", and the weights will flow from "top to bottom". To add new values, inputs have to be provided to the ports at the "left", and weights have to be provided to the ports at the "top".
 
-Then, the PEs are instantiated using compile-time construct of `genvar`, in which signals of the PE are connected to specified indices of the internal systolic array signals. Makes the code clean and easy to write!
-
-Block Diagram...
+Then, the PEs are instantiated using the Verilog compile-time construct of `genvar`, in which signals of the PE are connected to specified indices of the internal systolic array signals. Makes the code clean and easy to write!
 
 ### Unified Memory
 
@@ -139,11 +138,7 @@ The control unit coordinates several critical functions:
 **Pipeline Coordination**: The `mmu_en` signal (`control_unit.v:12`) acts as the master enable for the entire computation pipeline, transitioning from low during loading to high during computation phases. This is to ensure that elements are only loaded into the systolic array during the first round of set up inputs when all inputs are ready. Otherwise, if the chip is not initialized with all inputs in memory, it cannot complete computation and hence should not start it. 
     - However, for maximum throughput, the `mmu_en` signal is asserted when 6 of the 8 elements making up 2 matrices are input, so that computation begins when we have the elements to produce enough outputs, and is overlapped with matrix loads, and completes in the middle of the output cycle.
 
-**Streamed Processing**: During the 8-cycle output phase, the chip is available to take in 8 new input bytes provided at the `ui_in` ports. This is streaming, as the input and output ports will henceforth be constantly used. After this 8-cycle output phase, the input bytes input during that phase can now begin outputting, while subsequent inputs can be further written.
-
-However, if the user chooses not to write new inputs during the output phase, the outputs continue unabated, and the systolic array matrix accumulators automatically reset once the outputs are complete.
-
-**Streamed Processing**: During the 8-cycle output phase, the chip is available to take in 8 new input bytes provided at the `ui_in` ports. This is streaming, as the input and output ports will henceforth be constantly used. After this 8-cycle output phase, the input bytes input during that phase can now begin outputting, while subsequent inputs can be further written.
+**Streamed Processing**: During the 8-cycle output phase, the chip is available to take in 8 new input bytes provided at the `ui_in` ports. This is a streamlined flow of execution, as the input and output ports will henceforth be constantly used. After this 8-cycle output phase, the input bytes input during that phase can now begin outputting, while subsequent inputs can be further written.
 
 However, if the user chooses not to write new inputs during the output phase, the outputs continue unabated, and the systolic array matrix accumulators automatically reset once the outputs are complete.
 
@@ -165,7 +160,7 @@ The control unit implements sophisticated timing logic based on the systolic arr
     - Future value of B00 expected at input
 - **Cycle 7**: Output continues
     - Future value of B01 expected at input
-- **Back to Cycle 0**: Output continus. Since 6 of 8 of the next input elements would be on chip, the next cycle of data feeding begins
+- **Back to Cycle 0**: Output continues. Since 6 of 8 of the next input elements would be on chip, the next cycle of data feeding begins
     - Future value of B10 expected at input
 - **Cycle 1 again**: Last output element, first partial products of next output are computed.
     - Future value of B11 expected at input
@@ -210,8 +205,8 @@ The weight and input matrices are taken from memory. The feeder will set the exp
 - **Cycle 0**:
     - Blank data is sent to the output port. a_data0 = weight[0], b_data0 = input[0], done = 0
 - **Cycle 1**: 
-    - During the intial cycle when the memory is first populated, cycle 1 occurs during the input of the second matrix, which also overlaps with compute as the counter has already incremented.
-    - This module will send a value to its output that is equal to the lower 8 bits of the product of the A00 and B00, which are the top-left elements of the matrices. This is due to the settings that enable streamed processing. The chip's should therefore ignore that output.
+    - During the initial cycle when the memory is first populated, cycle 1 occurs during the input of the second matrix, which also overlaps with compute as the counter has already incremented.
+    - This module will send a value to its output that is equal to the lower 8 bits of the product of the A00 and B00, which are the top-left elements of the matrices. This is due to the settings that enable streamed processing. The chip should therefore ignore that output.
     - In terms of feeding the systolic array, if fused transpose is disabled, then a_data0 = weight[1], a_data1 = weight[2], b_data0 = input[2], b_data1 = input[1].
     - If fused transpose is enabled, the b_data0 and b_data1 values are swapped.
 - **Cycle 2**:
@@ -257,7 +252,7 @@ The module will assume an order of input of A matrix values and B matrix values,
 1. Initial Reset
     - Perform a reset by pulling the `rst_n` pin low to 0, and waiting for a single clock signal before pulling it back high to 1. This sets initial state values.
 2. Initial Matrix Load
-    - Load 8 matrix elements into the chip, one per cycle. For example, if your matrices are [[1, 2], [3, 4]], [[5, 6], [7, 8]], you would load in the row-major, first-matrix-first order of 1, 2, 3, 4, 5, 6, 7, 8. This occurs by setting the 8 `ui_in` pins to the 8-bit value of the set matrix element, and waiting one clock cycle before the next can be loaded.
+    - Load 8 matrix elements into the chip, one per cycle. For example, if your matrices are [[1, 2], [3, 4]], [[5, 6], [7, 8]], you would load in the row-major-first-matrix-first order of 1, 2, 3, 4, 5, 6, 7, 8. This occurs by setting the 8 `ui_in` pins to the 8-bit value of the set matrix element, and waiting one clock cycle before the next can be loaded.
 3. Collect Output & Send Next Inputs
     - Thanks to the aggressive pipelining implemented in the chip, once the matrices are loaded, you can already start collecting output!
     - Output elements will be 16 bits each, but since the output port is only 8 bits, one element is output in 2 cycles, with the upper half (bits 15 - 8) in the first cycle, and the lower half (bits 7 - 0) in the second cycle.
