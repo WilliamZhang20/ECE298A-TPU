@@ -1,6 +1,6 @@
 # Tiny Tapeout project information
 project:
-  title:        "ECE298A-TPU"      # Project title
+  title:        "Tiny Tapeout Tensor Processing Unit"      # Project title
   author:       "William Zhang, Yash Karthik, Guhan Iyer, Ethan Leung"      # Your name
   discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
   description:  "multiplies matrices"      # One line description of what your project does

@@ -19,7 +19,7 @@ To orchestrate the flow of data between inputs, memory, and outputs, a control u
 
 Finally, a feeder module interfaces with the matrix multiplier to schedule the inputs and outputs to and from the systolic array.
 
-It is capable of running over 99.8 Million Operations Per Second when using streamed processing to perform block multiplication of a 20x10 and a 10x20 matrix. 
+It is capable of running over 99.8 Million Operations Per Second when using a maximum throughput streamed processing pattern to multiply big matrices in 2x2 blocks.
 
 ## System Architecture
 
@@ -53,6 +53,20 @@ On the other hand, it is non-ideal to reset the entire chip, as it wastes time (
 The output is 16 bits for the 8-bit inputs, to account for the property of multiplication, as `0xFF` multiplied by `0xFF` is `0xFE01`, which is 16 bits wide. Moreover, it is also signed, so each input/weight value can range from decimal -128 to 127.
 
 ### The Systolic Array
+
+|Signal Name        | Direction     |Width    | Description                     |
+|-------------------|---------------|---------|---------------------------------|
+|clk                | input         |1        | The clock!                      |
+|rst                | input         |1        | Reset                           |
+|clear              | input         |1        | Forwarded to PEs                |
+|activation         | input         |1        | Enables ReLU                    |
+|a_data0            | input         |8        | Input value of top-left PE      |
+|a_data1            | input         |8        | Input value of bottom-left PE   |
+|b_out              | output        |8        | Weight value of top-left PE     |
+|c00                | output        |16       | Top-left output value           |
+|c01                | output        |16       | Top-right output value          |
+|c10                | output        |16       | Bottom-left output value        |
+|c11                | output        |16       | Bottom-right output value       |
 
 The systolic array is a network, or grid, of PEs. In this 2x2 multiplier, the result is a 4-element square matrix, so there are 4 PEs.
 
@@ -107,7 +121,7 @@ The control unit implements a 3-state FSM that manages the complete matrix multi
 
 1. **S_IDLE (2'b00)**: The default waiting state where the system remains until a matrix multiplication operation is requested via the `load_en` signal.
 
-2. **S_LOAD_MATS (2'b01)**: The matrix loading phase when 8 matrix elements (4 for each 2x2 matrix) are sequentially loaded into memory. The control unit tracks progress using `mat_elems_loaded` counter and generates appropriate memory addresses.
+2. **S_LOAD_MATS (2'b01)**: The matrix loading phase when 8 matrix elements (4 for each 2x2 matrix) are sequentially loaded into memory. Because the order is already assumed to be row-major order, left matrix first, then the address value tracked in `mem_addr` will only increment when `load_en` is asserted, from 0 up until 7 when it resets to get ready for future input matrices.
 
 3. **S_MMU_FEED_COMPUTE_WB (2'b10)**: The computation and output phase, taking 8 cycles total when the systolic array performs the last few operations of matrix multiplication, and makes the 4 outputs available in 16 bits each, 1 every 2 cycles. At the same time, the chip is available for streamed processing so that 8 new elements, representing 2 new 2x2 matrices, can be input for the next round of outputs occurring right after the current round. 
 
@@ -122,7 +136,12 @@ The control unit coordinates several critical functions:
 - Determine when computation results are ready for output
 - Clear processing elements after computation completion
 
-**Pipeline Coordination**: The `mmu_en` signal (`control_unit.v:12`) acts as the master enable for the entire computation pipeline, transitioning from low during loading to high during computation phases.
+**Pipeline Coordination**: The `mmu_en` signal (`control_unit.v:12`) acts as the master enable for the entire computation pipeline, transitioning from low during loading to high during computation phases. This is to ensure that elements are only loaded into the systolic array during the first round of set up inputs when all inputs are ready. Otherwise, if the chip is not initialized with all inputs in memory, it cannot complete computation and hence should not start it. 
+    - However, for maximum throughput, the `mmu_en` signal is asserted when 6 of the 8 elements making up 2 matrices are input, so that computation begins when we have the elements to produce enough outputs, and is overlapped with matrix loads, and completes in the middle of the output cycle.
+
+**Streamed Processing**: During the 8-cycle output phase, the chip is available to take in 8 new input bytes provided at the `ui_in` ports. This is streaming, as the input and output ports will henceforth be constantly used. After this 8-cycle output phase, the input bytes input during that phase can now begin outputting, while subsequent inputs can be further written.
+
+However, if the user chooses not to write new inputs during the output phase, the outputs continue unabated, and the systolic array matrix accumulators automatically reset once the outputs are complete.
 
 **Streamed Processing**: During the 8-cycle output phase, the chip is available to take in 8 new input bytes provided at the `ui_in` ports. This is streaming, as the input and output ports will henceforth be constantly used. After this 8-cycle output phase, the input bytes input during that phase can now begin outputting, while subsequent inputs can be further written.
 
@@ -156,6 +175,7 @@ The control unit implements sophisticated timing logic based on the systolic arr
 
 State transitions are triggered by specific conditions:
 - `S_IDLE → S_LOAD_MATS`: When `load_en` is asserted (`control_unit.v:30-32`)
+- `S_LOAD_MATS → S_MMU_FEED_COMPUTE_WB`: When all 8 elements are loaded (`mem_addr == 3'b111`) (`control_unit.v:37-38`)
 - `S_LOAD_MATS → S_MMU_FEED_COMPUTE_WB`: When all 8 elements are loaded (`mat_elems_loaded == 3'b111`) (`control_unit.v:37-38`)
 - Afterwards, the state machine stays in `S_MMU_FEED_COMPUTE_WB`, but essentially cycles through counts of `mem_addr` and `mmu_cycle` to keep track of the memory address writing for streamed processing and maintain a rhythm for the Matrix Unit Feeder.
 
@@ -262,7 +282,9 @@ The second is the ability to run the Rectified Linear Unit (ReLU) activation fun
 
 The third, which is provided as a software interface option in the `test/tpu/test_tpu.py` Python script's `matmul` function, is the ability to multiply bigger matrices, of all compatible dimensions, in 2x2 blocks. This will run the chip multiple times in a streaming fashion. If the matrix dimensions are odd, since the block size is even, it will pad zeros and then truncate the output matrix back to size. 
 
-The cool thing is that with the blocked `matmul`, you can also exploit the fused transpose within blocks, adding no extra time for $AB^T$. However, there are only two limits: 1) The input matrix elements can only range from -128 to 127, and 2) The fused ReLU is not doable within individual blocks, as it is nonlinear and cannot be distributed within the block sums. Therefore, the software must incur a cost at the end to apply any nonlinear activation function.
+1) The input matrix elements can only range from -128 to 127, and:
+    
+2) The fused ReLU is not doable within individual blocks of a larger matrix product, as it is nonlinear and cannot be distributed within the result block sums. Therefore, the software must incur a cost at the end to apply any nonlinear activation function.
 
 ### Example Result
 
@@ -270,7 +292,7 @@ Below is a timing diagram showing signal progression for a streamed processing p
 
 ![Alt text](TPU-GTKWave.png)
 
-The part highlighting Input/Output streaming is the fact that mat_elems_loaded, which increments whenever load is enabled, and keeps incrementing like 0-7, 0-7, etc, and so is the output count, albeit slightly offset in time.
+The part highlighting Input/Output streaming is the fact that `mem_addr`, which increments whenever load is enabled, keeps incrementing like 0-7, 0-7, etc, and so is the output count, albeit slightly offset in time.
 
 One can also observe the pattern in which elements are fed into the systolic array, as seen by `a_data0`, `a_data1`, `b_data0`, `b_data1` signals, and the output "waterfall" flow of output appearances seen inside `c00`, `c01`, `c10`, `c11`. 
 

@@ -22,7 +22,6 @@ module control_unit (
     localparam [1:0] S_MMU_FEED_COMPUTE_WB   = 2'b10;
 
     reg [1:0] state, next_state;
-    reg [2:0] mat_elems_loaded;
 
     assign state_out = state;
 
@@ -39,7 +38,7 @@ module control_unit (
             
             S_LOAD_MATS: begin
                 // All 8 elements loaded (4 for each matrix)
-                if (mat_elems_loaded == 3'b111) begin 
+                if (mem_addr == 3'b111) begin 
                     next_state = S_MMU_FEED_COMPUTE_WB;
                 end
             end
@@ -72,7 +71,6 @@ module control_unit (
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             state <= S_IDLE;
-            mat_elems_loaded <= 0;
             mmu_cycle <= 0;
             mmu_en <= 0;
             mem_addr <= 0;
@@ -81,28 +79,24 @@ module control_unit (
             mem_addr <= 0;
             case (state)
                 S_IDLE: begin
-                    mat_elems_loaded <= 0;
                     mmu_cycle <= 0;
                     mmu_en <= 0;
                     if (load_en) begin
-                        mat_elems_loaded <= mat_elems_loaded + 1;
-                        mem_addr <= mat_elems_loaded + 1;
+                        mem_addr <= mem_addr + 1;
                     end
                 end
 
                 S_LOAD_MATS: begin
                     if (load_en) begin
-                        mat_elems_loaded <= mat_elems_loaded + 1;
                         mem_addr <= mem_addr + 1;
                     end
 
-                    if (mat_elems_loaded == 3'b101) begin
+                    if (mem_addr == 3'b101) begin
                         mmu_en <= 1;
-                    end else if (mat_elems_loaded >= 3'b110) begin
+                    end else if (mem_addr >= 3'b110) begin
                         mmu_en <= 1;
                         mmu_cycle <= mmu_cycle + 1;
-                        if (mat_elems_loaded == 3'b111) begin 
-                            mat_elems_loaded <= 0;
+                        if (mem_addr == 3'b111) begin 
                             mem_addr <= 0;
                         end
                     end
@@ -114,20 +108,17 @@ module control_unit (
                     // In each cycle of 8 counts, it will: output 4 16-bit output elements the result of the previous matmul,
                     // and take in 8 new 8-bit elements
                     if (load_en) begin
-                        mat_elems_loaded <= mat_elems_loaded + 1;
-                        mem_addr <= mat_elems_loaded + 1;
+                        mem_addr <= mem_addr + 1;
                     end
 					mmu_cycle <= mmu_cycle + 1; // allow mmu_cycle to continue incrementing, permitting a pipeline flush
                     if (mmu_cycle == 3'b111) begin
                         mmu_cycle <= 0;
                     end else if (mmu_cycle == 1) begin
-                        mat_elems_loaded <= 0;
                         mem_addr <= 0;
                     end
                 end
 				
 				default: begin
-					mat_elems_loaded <= 0;
                     mmu_cycle <= 0;
                     mmu_en <= 0;
 				end
