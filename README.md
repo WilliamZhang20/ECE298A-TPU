@@ -20,6 +20,8 @@ This project implements a small-scale, hardware-efficient Tensor Processing Unit
 
 ## System Architecture
 
+Notice in the diagram that data flows from the input through the blue, yellow, red, purple, and green arrows to go from two input matrices to an output matrix.
+
 ![Block Diagram](docs/ECE298A-TPU.png)
 
 **Subsystems:**
