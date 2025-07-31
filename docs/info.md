@@ -19,7 +19,7 @@ To orchestrate the flow of data between inputs, memory, and outputs, a control u
 
 Finally, a feeder module interfaces with the matrix multiplier to schedule the inputs and outputs to and from the systolic array.
 
-It is capable of running over 99.8 Million Operations Per Second when using streamed processing to perform block multiplication of a 20x10 and a 10x20 matrix. 
+It is capable of running over 99.8 Million Operations Per Second when using a maximum throughput streamed processing pattern to multiply big matrices in 2x2 blocks.
 
 ## System Architecture
 
@@ -277,7 +277,11 @@ The second is the ability to run the Rectified Linear Unit (ReLU) activation fun
 
 The third, which is provided as a software interface option in the `test/tpu/test_tpu.py` Python script's `matmul` function, is the ability to multiply bigger matrices, of all compatible dimensions, in 2x2 blocks. This will run the chip multiple times in a streaming fashion. If the matrix dimensions are odd, since the block size is even, it will pad zeros and then truncate the output matrix back to size. 
 
-The cool thing is that with the blocked `matmul`, you can also exploit the fused transpose within blocks, adding no extra time for $AB^T$. However, there are only two limits: 1) The input matrix elements can only range from -128 to 127, and 2) The fused ReLU is not doable within individual blocks, as it is nonlinear and cannot be distributed within the block sums. Therefore, the software must incur a cost at the end to apply any nonlinear activation function.
+The cool thing is that with the blocked `matmul`, you can also exploit the fused transpose within blocks, adding no extra time for $AB^T$. However, there are only two limits: 
+
+1) The input matrix elements can only range from -128 to 127, and:
+    
+2) The fused ReLU is not doable within individual blocks of a larger matrix product, as it is nonlinear and cannot be distributed within the result block sums. Therefore, the software must incur a cost at the end to apply any nonlinear activation function.
 
 ### Example Result
 
@@ -285,7 +289,7 @@ Below is a timing diagram showing signal progression for a streamed processing p
 
 ![Alt text](TPU-GTKWave.png)
 
-The part highlighting Input/Output streaming is the fact that mem_addr, which increments whenever load is enabled, and keeps incrementing like 0-7, 0-7, etc, and so is the output count, albeit slightly offset in time.
+The part highlighting Input/Output streaming is the fact that `mem_addr`, which increments whenever load is enabled, keeps incrementing like 0-7, 0-7, etc, and so is the output count, albeit slightly offset in time.
 
 One can also observe the pattern in which elements are fed into the systolic array, as seen by `a_data0`, `a_data1`, `b_data0`, `b_data1` signals, and the output "waterfall" flow of output appearances seen inside `c00`, `c01`, `c10`, `c11`. 
 
