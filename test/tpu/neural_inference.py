@@ -5,6 +5,8 @@ import numpy as np
 import torch
 from test_tpu import matmul
 
+torch.serialization.add_safe_globals([np.core.multiarray._reconstruct])
+
 def quantize_activation(x, scale, zero_point):
     """Quantize floating point values to 8-bit integers"""
     return np.clip(np.round(x / scale + zero_point), -128, 127).astype(np.int8)
