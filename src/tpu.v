@@ -112,7 +112,7 @@ module tt_um_tpu (
     
     assign uo_out = stage10;
     assign uio_out = {done, 7'b0};
-    assign uio_oe = 8'b11100000;
+    assign uio_oe = 8'b10000000;
 
     wire _unused = &{ena, uio_in[7:3]};
 
