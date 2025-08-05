@@ -21,7 +21,7 @@ torch.serialization.add_safe_globals([np.core.multiarray._reconstruct])
 ##########################################################################################
 ###### Skipped Neural Network Training - Model is loaded from pre-trained checkpoint #####
 
-@cocotb.test
+@cocotb.test()
 async def test_neural_network_inference(dut):
     dut._log.info("Start")
     clock = Clock(dut.clk, 20, units="ns")
