@@ -8,7 +8,6 @@ import numpy as np
 The coolest part: setting up QAT in PyTorch
 """
 import torch
-torch.backends.quantized.engine = 'qnnpack'
 import torch.nn as nn
 import torch.optim as optim
 import torchvision
@@ -105,7 +104,7 @@ class FCNetCustomQuant(nn.Module):
         x = self.fc2(x)
         return x
     
-def prepare_model(model, qconfig='qnnpack'):
+def prepare_model(model, qconfig='fbgemm'):
     model.qconfig = torch.quantization.get_default_qat_qconfig(qconfig)
     model = prepare_qat(model, inplace=False)
     return model
