@@ -81,6 +81,10 @@ At each clock cycle, elements will flow between the PEs. The inputs will flow fr
 
 Then, the PEs are instantiated using the Verilog compile-time construct of `genvar`, in which signals of the PE are connected to specified indices of the internal systolic array signals. Makes the code clean and easy to write!
 
+Diagram of PE arrangement below:
+
+![Alt text](systolic_array_diagram.png)
+
 ### Unified Memory
 
 The unified memory module (`memory.v`) is an on-chip store that holds both weight and input matrices for quick access to both values during computations.
