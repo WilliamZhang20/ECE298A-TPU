@@ -270,6 +270,11 @@ The module will assume an order of input of A matrix values and B matrix values,
 5. Input Options
     - Note that if new matrices are not input during the output cycle, i.e. the `ui_in` pin is set to 0, then it is the equivalent of     "flushing the pipeline", as once the output is complete, it is the equivalent of starting at step 2.
 
+
+Visual of an example matrix multiplication round through the systolic array:
+
+![Alt text](Matrix-Multiplication-Round-Systolic.png)
+
 ### Matrix Multiplication Options
 
 The example shown above is a very simple and plain 2x2 matrix multiplication. However, this TPU chip offers additional options. 
