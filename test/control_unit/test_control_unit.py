@@ -110,13 +110,17 @@ async def test_control_unit_mmu_compute_phase(dut):
 
     # Load all 8 elements quickly
     dut.load_en.value = 1
+    print("State: ", int(dut.state_out))
     for _ in range(8):
+        print("State: ", int(dut.state_out))
         await ClockCycles(dut.clk, 1)
     dut.load_en.value = 0
-
+    print("State: ", int(dut.state_out))
+    
     # Now in MMU_FEED_COMPUTE_WB state
     # mmu_cycle should increment from 2 to 7 (0 -> 1 done in S_LOAD_MATS state)
     for expected_cycle in range(2, 8):
+        print("State: ", int(dut.state_out))
         await ClockCycles(dut.clk, 1)
         assert dut.mmu_en.value == 1, f"mmu_en should remain 1 during compute phase"
         assert dut.mmu_cycle.value.integer == expected_cycle, f"mmu_cycle should be {expected_cycle}, got {dut.mmu_cycle.value}"
@@ -125,6 +129,7 @@ async def test_control_unit_mmu_compute_phase(dut):
         assert dut.mem_addr.value == 0, f"mem_addr should be 0 during compute phase"
     
     # After mmu_cycle reaches 5, should return to IDLE
+    # print("State: ", int(dut.state_out))
     await ClockCycles(dut.clk, 1)
     assert dut.mmu_en.value == 1, "mmu_en should be 1 while kept in COMPUTE"
     assert dut.mmu_cycle.value.integer == 0, "mmu_cycle should reset to 0 in COMPUTE"

@@ -10,7 +10,10 @@ module control_unit (
 
     // MMU feeding control
     output reg mmu_en,
-    output reg [2:0] mmu_cycle
+    output reg [2:0] mmu_cycle,
+
+    // For debugging
+    output wire [1:0] state_out
 );
 
     // STATES
@@ -19,6 +22,8 @@ module control_unit (
     localparam [1:0] S_MMU_FEED_COMPUTE_WB   = 2'b10;
 
     reg [1:0] state, next_state;
+
+    assign state_out = state;
 
     // Next state logic
     always @(*) begin

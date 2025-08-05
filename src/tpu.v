@@ -35,8 +35,11 @@ module tt_um_tpu (
     wire [7:0] a_data0, b_data0, a_data1, b_data1;
 
     wire done;
-    
-    wire [7:0] stage1, stage2, stage3, stage4, stage5, stage6, stage7, stage8, stage9, stage10;
+    wire [1:0] state;
+
+    wire [7:0] stage1;
+    wire [7:0] stage2;
+    wire [7:0] stage3;
 
     // Module Instantiations
     memory mem (
@@ -55,7 +58,8 @@ module tt_um_tpu (
         .load_en(load_en),
         .mem_addr(mem_addr),
         .mmu_en(mmu_en),
-        .mmu_cycle(mmu_cycle)
+        .mmu_cycle(mmu_cycle),
+        .state_out(state)
     );
 
     systolic_array_2x2 mmu (
@@ -100,19 +104,11 @@ module tt_um_tpu (
             (* keep *) buffer buf1 (.A(out_data[i]), .X(stage1[i]));
             (* keep *) buffer buf2 (.A(stage1[i]), .X(stage2[i]));
             (* keep *) buffer buf3 (.A(stage2[i]), .X(stage3[i]));
-            (* keep *) buffer buf4 (.A(stage3[i]), .X(stage4[i]));
-            (* keep *) buffer buf5 (.A(stage4[i]), .X(stage5[i]));
-            (* keep *) buffer buf6 (.A(stage5[i]), .X(stage6[i]));
-            (* keep *) buffer buf7 (.A(stage6[i]), .X(stage7[i]));
-            (* keep *) buffer buf8 (.A(stage7[i]), .X(stage8[i]));
-            (* keep *) buffer buf9 (.A(stage8[i]), .X(stage9[i]));
-            (* keep *) buffer buf10 (.A(stage9[i]), .X(stage10[i]));
         end
     endgenerate
-    
-    assign uo_out = stage10;
-    assign uio_out = {done, 7'b0};
-    assign uio_oe = 8'b10000000;
+    assign uo_out = stage3;
+    assign uio_out = {done, state, 5'b0};
+    assign uio_oe = 8'b11100000;
 
     wire _unused = &{ena, uio_in[7:3]};
 
