@@ -1,25 +1,27 @@
+from test_tpu import matmul
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 import numpy as np
-import torch
-from test_tpu import matmul
 
-torch.serialization.add_safe_globals([np.core.multiarray._reconstruct])
-torch.serialization.add_safe_globals([numpy.ndarray])
+"""
+Load pretrained QAT model and quantized test data
+"""
+import torch
 
 def quantize_activation(x, scale, zero_point):
     """Quantize floating point values to 8-bit integers"""
     return np.clip(np.round(x / scale + zero_point), -128, 127).astype(np.int8)
 
-async def reset_dut(dut):
-    """Reset the DUT by asserting rst_n low for 10 clock cycles, then high."""
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
-    dut.rst_n.value = 1
-    await ClockCycles(dut.clk, 10)
+def dequantize_activation(x_q, scale, zero_point):
+    """Convert 8-bit integers back to floating point"""
+    return (x_q.astype(np.float32) - zero_point) * scale
+torch.serialization.add_safe_globals([np.core.multiarray._reconstruct])
 
-@cocotb.test()
+##########################################################################################
+###### Skipped Neural Network Training - Model is loaded from pre-trained checkpoint #####
+
+@cocotb.test
 async def test_neural_network_inference(dut):
     dut._log.info("Start")
     clock = Clock(dut.clk, 20, units="ns")
@@ -29,7 +31,7 @@ async def test_neural_network_inference(dut):
 
     # Load PyTorch QAT weights
     try:
-        model_data = torch.load('tpu/qat_model.pt', weights_only=True)
+        model_data = torch.load('tpu/qat_model.pt', weights_only=False)
         weights = model_data['weights']
         scales = model_data['scales']
     except Exception as e:
@@ -55,13 +57,11 @@ async def test_neural_network_inference(dut):
         dut._log.info(f"Processing test image {img_idx + 1}/{num_test_images}")
         X = test_images[img_idx:img_idx+1, :]  # 1x784, int8
 
-        # Layer 1: Z1 = X @ W1^T + ReLU
         Z1_raw = await matmul(dut, X, W1, transpose=True, relu=True)  # 1x128
 
-        # Quantize activations manually
         Z1_quantized = quantize_activation(Z1_raw, fc1_activation_scale, zero_point=0)
 
-        # Layer 2: Z2 = Z1_quantized @ W2^T
+        # Layer 2: Z2 = Z1_quantized @ W2
         Z2_raw = await matmul(dut, Z1_quantized, W2, transpose=True, relu=False)
 
         # Dequantize final output for prediction
