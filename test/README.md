@@ -129,6 +129,8 @@ make test-top GATES=yes
   - Tests extreme value combinations (-128 × 127, -128 × -128)
   - Ensures correct handling of result overflow and saturation
 
+* **Verification Correctness**: output results were validated using commerically and popularly proven tools like NumPy, allowing us to verify that the logic of the circuit is correct. Similarly, when block multiplication was performed in bigger matrices, in which special algorithms were applied to break down the matrices, the NumPy validation was applied outside the hardware's required matrix breakdown, which validates the entire process at both ends.
+
 ## Viewing waveforms
 
 Each module's test directory has a `wave` directory, which contains `.vcd` waveforms generated after each test. These can be viewed with either `surfer` or `GTKWave`:
