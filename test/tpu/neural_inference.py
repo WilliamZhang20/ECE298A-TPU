@@ -9,6 +9,15 @@ Load pretrained QAT model and quantized test data
 """
 import torch
 
+async def reset_dut(dut):
+    dut.ena.value = 1
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 1)
+    dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 1)
+
 def quantize_activation(x, scale, zero_point):
     """Quantize floating point values to 8-bit integers"""
     return np.clip(np.round(x / scale + zero_point), -128, 127).astype(np.int8)
@@ -21,6 +30,8 @@ torch.serialization.add_safe_globals([np.core.multiarray._reconstruct])
 ##########################################################################################
 ###### Skipped Neural Network Training - Model is loaded from pre-trained checkpoint #####
 
+torch.serialization.add_safe_globals([np.core.multiarray._reconstruct])
+
 @cocotb.test()
 async def test_neural_network_inference(dut):
     dut._log.info("Start")
@@ -31,7 +42,7 @@ async def test_neural_network_inference(dut):
 
     # Load PyTorch QAT weights
     try:
-        model_data = torch.load('tpu/qat_model.pt', weights_only=False)
+        model_data = torch.load('tpu/qat_model.pt', weights_only=True)
         weights = model_data['weights']
         scales = model_data['scales']
     except Exception as e:
