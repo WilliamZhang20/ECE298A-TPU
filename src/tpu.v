@@ -35,13 +35,10 @@ module tt_um_tpu (
     wire [7:0] a_data0, b_data0, a_data1, b_data1;
 
     wire done;
-    wire [1:0] state;
-
+    
     wire [7:0] stage1;
     wire [7:0] stage2;
     wire [7:0] stage3;
-
-    wire [1:0] bufState1, bufState2, bufState3;
 
     // Module Instantiations
     memory mem (
@@ -60,8 +57,7 @@ module tt_um_tpu (
         .load_en(load_en),
         .mem_addr(mem_addr),
         .mmu_en(mmu_en),
-        .mmu_cycle(mmu_cycle),
-        .state_out(state)
+        .mmu_cycle(mmu_cycle)
     );
 
     systolic_array_2x2 mmu (
@@ -108,18 +104,9 @@ module tt_um_tpu (
             (* keep *) buffer buf3 (.A(stage2[i]), .X(stage3[i]));
         end
     endgenerate
-
-    genvar j;
-    generate
-        for (j = 0; j < 2; j = j + 1) begin : state_buf_loop
-            (* keep *) buffer buf1 (.A(state[j]), .X(bufState1[j]));
-            (* keep *) buffer buf2 (.A(bufState1[j]), .X(bufState2[j]));
-            (* keep *) buffer buf3 (.A(bufState2[j]), .X(bufState3[j]));
-        end
-    endgenerate
     
     assign uo_out = stage3;
-    assign uio_out = {done, bufState3, 5'b0};
+    assign uio_out = {done, 7'b0};
     assign uio_oe = 8'b11100000;
 
     wire _unused = &{ena, uio_in[7:3]};
