@@ -51,12 +51,12 @@ def random_2x2_matrix(low=-128, high=127):
 
 @cocotb.test()
 async def random_test_vecs(dut):
+    """
+    Tests the mmu_feeder with multiple random matrices, processed sequentially.
+    """
     cocotb.start_soon(Clock(dut.clk, 20, units="ns").start())
-    await reset_dut(dut) # reset only once...pipeline the rest...
     
-    dut.en.value = 1
-
-    N = 10
+    N = 10 # Number of random test cases
 
     # Pre-generate all test cases
     testcases = []
@@ -75,71 +75,84 @@ async def random_test_vecs(dut):
             "I": I_mat.flatten().tolist(),
             "transpose": transpose,
             "C_expected": C.flatten().tolist(),
+            "A": A,
             "B_raw": B_raw,
-            "A": A
         })
 
-    results = []
-    prev_result = []
-    for cycle in range(N + 8):
-        i = cycle % 8
-        j = cycle // 8
+    # Process each test case one by one
+    for j, test in enumerate(testcases):
+        dut._log.info(f"--- Running Random Test Case {j} ---")
+        dut._log.info(f"W:\n{test['A']}\nI:\n{test['B_raw']}\nTranspose: {test['transpose']}\nExpected C:\n{test['C_expected']}")
+        
+        # Reset DUT for a clean state before each test
+        await reset_dut(dut)
+        dut.en.value = 1
 
-        if cycle > 3 and i == 2:
-            prev_result = results
-            results = []
-        idx = cycle if cycle < N else N - 1
-        test = testcases[idx]
-        mmu_cycle = i
-        dut.mmu_cycle.value = mmu_cycle
+        # Get data for the current test
+        W = test["W"]
+        I = test["I"]
+        C_expected = test["C_expected"]
+        dut.transpose.value = test["transpose"]
 
-        # Load inputs (overwrites every 4 cycles)
-        if cycle < N:
-            W = test["W"]
-            I = test["I"]
-            dut.transpose.value = test["transpose"]
+        result_bytes = []
 
-            if mmu_cycle == 0:
-                dut.weight0.value = W[0]
-                dut.input0.value = I[0]
-            elif mmu_cycle == 1:
-                dut.weight1.value = W[1]
-                dut.weight2.value = W[2]
-                dut.input1.value = I[1]
-                dut.input2.value = I[2]
-                dut.c00.value = test["C_expected"][0]
-            elif mmu_cycle == 2:
-                dut.weight3.value = W[3]
-                dut.input3.value = I[3]
-                dut.c01.value = test["C_expected"][1]
-                dut.c10.value = test["C_expected"][2]
-            elif mmu_cycle == 3:
-                dut.c11.value = test["C_expected"][3]
-
-        # Capture outputs for previous tests
+        # --- CYCLE 0: Load first inputs ---
+        dut.mmu_cycle.value = 0
+        dut.weight0.value = W[0]
+        dut.input0.value = I[0]
         await RisingEdge(dut.clk)
-        if cycle >= 2:
-            results.append(dut.host_outdata.value.integer)
-            print(i, results, "and", prev_result)
 
-        # Process captured results
-        if cycle > 3 and i == 1:
-            dut._log.info(f"Test {j}, W:\n{testcases[j]['A']}\nI:\n{testcases[j]['B_raw']}\n")
-            words = [
-                (results[0] << 8) | results[1],
-                (results[2] << 8) | results[3],
-                (results[4] << 8) | results[5],
-                (results[6] << 8) | results[7],
-            ]
-            words = [bytesToInt16(x) for x in words]
-            expected = testcases[j]["C_expected"]
+        # --- CYCLE 1: Load more inputs and first result C[0] ---
+        dut.mmu_cycle.value = 1
+        dut.weight1.value = W[1]
+        dut.weight2.value = W[2]
+        dut.input1.value = I[1]
+        dut.input2.value = I[2]
+        dut.c00.value = int(C_expected[0])
+        await RisingEdge(dut.clk)
 
-""" # TODO: ASSERTS ARE NOT WORKING
-            for k, (e, g) in enumerate(zip(expected, words)):
-                assert e == g, f"[Test {j}] C[{k}] = {g} != expected {e}"
+        # --- CYCLE 2: Load final inputs, more results, capture first output byte ---
+        dut.mmu_cycle.value = 2
+        dut.weight3.value = W[3]
+        dut.input3.value = I[3]
+        dut.c01.value = int(C_expected[1])
+        dut.c10.value = int(C_expected[2])
+        await RisingEdge(dut.clk)
+        result_bytes.append(dut.host_outdata.value.integer)
 
-            dut._log.info(f"[Test {j}] Passed\n")
-"""
+        # --- CYCLE 3: Load final result, capture second output byte ---
+        dut.mmu_cycle.value = 3
+        dut.c11.value = int(C_expected[3])
+        await RisingEdge(dut.clk)
+        result_bytes.append(dut.host_outdata.value.integer)
+        
+        # --- CYCLES 4-7: Capture remaining output bytes ---
+        for i in range(4, 8):
+            dut.mmu_cycle.value = i
+            await RisingEdge(dut.clk)
+            result_bytes.append(dut.host_outdata.value.integer)
+
+        # --- Final two clocks to flush pipeline ---
+        for i in range(2):
+            dut.mmu_cycle.value = i
+            await RisingEdge(dut.clk)
+            result_bytes.append(dut.host_outdata.value.integer)
+
+        # --- Verification ---
+        # Reconstruct 16-bit signed words from the captured bytes
+        words = [
+            (result_bytes[0] << 8) | result_bytes[1],
+            (result_bytes[2] << 8) | result_bytes[3],
+            (result_bytes[4] << 8) | result_bytes[5],
+            (result_bytes[6] << 8) | result_bytes[7],
+        ]
+        words = [bytesToInt16(x) for x in words]
+
+        # Assert that the received words match the expected results
+        for k, (expected, got) in enumerate(zip(C_expected, words)):
+            assert expected == got, f"[Test {j}] C[{k}] = {got} != expected {expected}"
+        
+        dut._log.info(f"[Test {j}] Passed\n")
 
 @cocotb.test()
 async def test_mmu_feeder(dut):
