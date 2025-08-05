@@ -54,8 +54,8 @@ pinout:
   uio[2]: "ACTIVATION (input)"
   uio[3]: "Unused"
   uio[4]: "Unused"
-  uio[5]: "Unused"
-  uio[6]: "Unused"
+  uio[5]: "STATE[0]"
+  uio[6]: "STATE[1]"
   uio[7]: "DONE (output)"
 
 # Do not change!
