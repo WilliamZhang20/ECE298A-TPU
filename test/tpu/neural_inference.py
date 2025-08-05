@@ -13,49 +13,7 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
 from torch.quantization import QuantStub, DeQuantStub, prepare_qat, convert
-
-def calculate_activation_scale(model, data_loader, layer_name):
-    """Calculate the scale for quantizing activations after a specific layer"""
-    model.eval()
-    max_vals = []
-    
-    # Hook to capture intermediate activations
-    activations = {}
-    def hook_fn(name):
-        def hook(module, input, output):
-            activations[name] = output.detach()
-        return hook
-    
-    # Register hook
-    if layer_name == 'fc1':
-        hook = model.fc1.register_forward_hook(hook_fn('fc1'))
-    
-    with torch.no_grad():
-        for i, (images, _) in enumerate(data_loader):
-            if i >= 100:  # Sample first 100 batches for scale calculation
-                break
-            images = images.view(-1, 784)
-            _ = model(images)
-            
-            if 'fc1' in activations:
-                # Apply ReLU manually since we want post-ReLU values
-                fc1_output = torch.nn.functional.relu(activations['fc1'])
-                max_vals.append(torch.max(torch.abs(fc1_output)).item())
-    
-    hook.remove()
-    
-    # Use 99th percentile instead of max to avoid outliers
-    max_val = np.percentile(max_vals, 99)
-    scale = max_val / 127.0  # Map to [-128, 127] range
-    return scale
-
-def quantize_activation(x, scale, zero_point):
-    """Quantize floating point values to 8-bit integers"""
-    return np.clip(np.round(x / scale + zero_point), -128, 127).astype(np.int8)
-
-def dequantize_activation(x_q, scale, zero_point):
-    """Convert 8-bit integers back to floating point"""
-    return (x_q.astype(np.float32) - zero_point) * scale
+import numpy as np
 
 class FCNet(nn.Module):
     def __init__(self):
@@ -63,8 +21,8 @@ class FCNet(nn.Module):
         self.quant = QuantStub()
         self.fc1 = nn.Linear(784, 128)
         self.relu = nn.ReLU()
-        # Add quantization stub for intermediate activations
-        self.activation_quant = QuantStub()  
+        self.dequant_act = DeQuantStub()
+        self.activation_quant = QuantStub()
         self.fc2 = nn.Linear(128, 10)
         self.dequant = DeQuantStub()
 
@@ -72,38 +30,12 @@ class FCNet(nn.Module):
         x = self.quant(x)
         x = self.fc1(x)
         x = self.relu(x)
-        # Quantize intermediate activations during training!
-        x = self.activation_quant(x)  
+        x = self.dequant_act(x)
+        x = self.activation_quant(x)
         x = self.fc2(x)
         x = self.dequant(x)
         return x
 
-class FakeQuantize(nn.Module):
-    def __init__(self, scale):
-        super().__init__()
-        self.scale = scale
-        
-    def forward(self, x):
-        # Simulate our hardware quantization during training
-        x_quantized = torch.clamp(torch.round(x / self.scale), -128, 127)
-        # But keep in float for gradient flow
-        return x_quantized * self.scale
-
-class FCNetCustomQuant(nn.Module):
-    def __init__(self, activation_scale=1.0):
-        super().__init__()
-        self.fc1 = nn.Linear(784, 128)
-        self.relu = nn.ReLU()
-        self.fake_quant = FakeQuantize(activation_scale)
-        self.fc2 = nn.Linear(128, 10)
-        
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.relu(x)
-        x = self.fake_quant(x)  # Simulate inter-layer quantization
-        x = self.fc2(x)
-        return x
-    
 def prepare_model(model, qconfig='fbgemm'):
     model.qconfig = torch.quantization.get_default_qat_qconfig(qconfig)
     model = prepare_qat(model, inplace=False)
@@ -127,6 +59,10 @@ def train_model(model, train_loader, epochs=5):
                 print(f'[Epoch {epoch + 1}, Batch {i + 1}] Loss: {running_loss / 100:.4f}')
                 running_loss = 0.0
 
+# Set quantization backend
+torch.backends.quantized.engine = 'fbgemm'
+
+# Data loading
 transform = transforms.Compose([transforms.ToTensor()])
 train_dataset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
 test_dataset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)
@@ -135,31 +71,39 @@ test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=F
 
 # Train and quantize model
 model = FCNet()
-model = prepare_model(model)
+model = prepare_model(model, qconfig='fbgemm')
 train_model(model, train_loader)
 
-fc1_activation_scale = calculate_activation_scale(model, train_loader, 'fc1')
 # Convert to quantized model
 model.eval()
 model = convert(model)
 
-# Save int8 weights
+# Extract scales and weights
 weights = {}
-weights['fc1'] = model.fc1.weight().int_repr().numpy().astype(np.int8)  # 784x128
-weights['fc2'] = model.fc2.weight().int_repr().numpy().astype(np.int8)  # 128x10
+weights['fc1'] = model.fc1.weight().int_repr().numpy().astype(np.int8)
+weights['fc2'] = model.fc2.weight().int_repr().numpy().astype(np.int8)
 
+# Get scales from quantization parameters
+fc1_activation_scale = model.activation_quant.scale.item()
 scales = {
     'fc1_activation_scale': fc1_activation_scale,
-    # For output layer, we typically don't quantize since it's logits
-    'fc2_output_scale': 1.0  # Keep as float for final prediction
+    'fc2_output_scale': 1.0  # No quantization on output
 }
 
-# Save everything together
 model_data = {
     'weights': weights,
     'scales': scales
 }
 torch.save(model_data, 'tpu/qat_model.pt')
+
+# Save test data
+test_images, test_labels = next(iter(test_loader))
+test_images = test_images[:3].view(-1, 784)
+scale = 255 / 1.0
+zero_point = -128
+test_images_int8 = torch.clamp(torch.round(test_images * scale + zero_point), -128, 127).to(torch.int8).numpy()
+test_labels = test_labels[:3].numpy()
+np.savez('tpu/mnist_test_data.npz', images=test_images_int8, labels=test_labels)
 
 # Test accuracy
 correct = 0
