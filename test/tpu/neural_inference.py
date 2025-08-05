@@ -8,6 +8,7 @@ import numpy as np
 The coolest part: setting up QAT in PyTorch
 """
 import torch
+torch.backends.quantized.engine = 'qnnpack'
 import torch.nn as nn
 import torch.optim as optim
 import torchvision
