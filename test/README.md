@@ -72,6 +72,16 @@ make test-top GATES=yes
 
 **File:** `test_control_unit.py`
 
+**Test Cases**:
+
+* **Reset**: verifies all control signals (mem_addr, mmu_en, mmu_cycle) are properly zeroed when reset is asserted
+* **Idle State**: ensures control unit remains in idle state with all outputs at zero when load_en is not asserted for multiple cycles
+* **Matrix Loading**: tests 8-cycle matrix loading phase with proper memory address incrementing (0-7) and MMU enable assertion when sufficient elements are loaded
+* **MMU Compute Phase**: validates MMU enable signals remain high and mmu_cycle counter increments correctly (2-7) during computation and writeback
+* **Full Cycle**: tests complete operation sequence from idle → matrix loading → MMU computation → back to compute state with proper signal transitions
+* **Load Enable Handling**: verifies load_en signal toggling is properly ignored during MMU compute phase while mmu_cycle continues incrementing normally
+* **Multiple Operations**: stress tests control unit with 100 consecutive operation cycles to ensure state machine reliability and proper signal timing
+
 ### Unified Memory Tests
 
 **File:** `test_memory.py`
@@ -93,9 +103,24 @@ make test-top GATES=yes
 
 **File:** `test_systolic_array.py`
 
+**Test Cases**:
+
+* **Basic 2x2 Matrix Multiplication**: validates core systolic array functionality with predefined 2x2 matrices, testing proper data flow through processing elements and correct computation of matrix multiplication (A=[[1,2],[3,4]], B=[[5,6],[7,8]], expected C=[[19,22],[43,50]])
+
 ### Top-level Tests
 
 **File:** `test_tpu.py`
+
+**Test Cases**:
+
+* **ReLU and Transpose Operations**: tests ReLU activation function and matrix transpose functionality with pipelined loading and reading, validating correct handling of negative values and matrix orientation changes
+* **Large Matrix Operations**: stress tests with randomly generated matrices up to 20x20, measuring operations per second and testing all combinations of transpose/ReLU flags to ensure scalability and performance
+* **Project Integration Test**: comprehensive end-to-end test simulating full TPU operation with sequential matrix operations
+  - Tests signed arithmetic edge cases with values ranging from -128 to 127
+  - Validates pipeline clearing between consecutive matrix operations
+  - Verifies proper output sequencing across multiple matrix computations
+  - Tests extreme value combinations (-128 × 127, -128 × -128)
+  - Ensures correct handling of result overflow and saturation
 
 ## Viewing waveforms
 
