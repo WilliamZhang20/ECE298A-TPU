@@ -42,7 +42,7 @@ async def test_neural_network_inference(dut):
 
     # Load PyTorch QAT weights
     try:
-        model_data = torch.load('tpu/qat_model.pt', weights_only=True)
+        model_data = torch.load('tpu/qat_model.pt', weights_only=False)
         weights = model_data['weights']
         scales = model_data['scales']
     except Exception as e:
