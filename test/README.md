@@ -99,6 +99,13 @@ make test-top GATES=yes
 
 **File:** `test_mmu_feeder.py`
 
+**Test Cases**:
+
+* **Regular, Edge Case, and Transpose**: Test mmu_feeder with regular matrix inputs (minimal functionality), edge case matrix input (check expected behavior with extreme inputs), and regular matrix inputs with tranpose enabled (check transpose functionality).
+* **Random Test Vectors**: Generates 10 random Input/Weight matrix pairs and processes them sequentially, checking output against expected values.
+
+**Note**: Expected output control signal values from mmu_feeder (i.e clear and done) are asserted at each mmu_cycle, covering all mmu_feeder functionality.
+
 ### Systolic Array Tests
 
 **File:** `test_systolic_array.py`
