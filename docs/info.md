@@ -132,19 +132,19 @@ The control unit implements a 3-state FSM that manages the complete matrix multi
 
 The control unit coordinates several critical functions:
 
-**Memory Interface Management**: Through the `mem_addr` output (`control_unit.v:9`), it generates sequential memory addresses (0-7) during the loading and streaming phase, ensuring matrix elements are stored in the correct memory locations for later retrieval.
+- **Memory Interface Management**: Through the `mem_addr` output (`control_unit.v:9`), it generates sequential memory addresses (0-7) during the loading and streaming phase, ensuring matrix elements are stored in the correct memory locations for later retrieval.
 
-**MMU Timing Control**: The `mmu_cycle` signal (`control_unit.v:13`) provides precise timing information to the MMU feeder module, enabling it to:
+- **MMU Timing Control**: The `mmu_cycle` signal (`control_unit.v:13`) provides precise timing information to the MMU feeder module, enabling it to:
 - Feed correct matrix elements to the systolic array at appropriate cycles
 - Determine when computation results are ready for output
 - Clear processing elements after computation completion
 
-**Pipeline Coordination**: The `mmu_en` signal (`control_unit.v:12`) acts as the master enable for the entire computation pipeline, transitioning from low during loading to high during computation phases. This is to ensure that elements are only loaded into the systolic array during the first round of set up inputs when all inputs are ready. Otherwise, if the chip is not initialized with all inputs in memory, it cannot complete computation and hence should not start it. 
+- **Pipeline Coordination**: The `mmu_en` signal (`control_unit.v:12`) acts as the master enable for the entire computation pipeline, transitioning from low during loading to high during computation phases. This is to ensure that elements are only loaded into the systolic array during the first round of set up inputs when all inputs are ready. Otherwise, if the chip is not initialized with all inputs in memory, it cannot complete computation and hence should not start it. 
     - However, for maximum throughput, the `mmu_en` signal is asserted when 6 of the 8 elements making up 2 matrices are input, so that computation begins when we have the elements to produce enough outputs, and is overlapped with matrix loads, and completes in the middle of the output cycle.
 
-**Streamed Processing**: During the 8-cycle output phase, the chip is available to take in 8 new input bytes provided at the `ui_in` ports. This is a streamlined flow of execution, as the input and output ports will henceforth be constantly used. After this 8-cycle output phase, the input bytes input during that phase can now begin outputting, while subsequent inputs can be further written.
+- **Streamed Processing**: During the 8-cycle output phase, the chip is available to take in 8 new input bytes provided at the `ui_in` ports. This is a streamlined flow of execution, as the input and output ports will henceforth be constantly used. After this 8-cycle output phase, the input bytes input during that phase can now begin outputting, while subsequent inputs can be further written.
 
-However, if the user chooses not to write new inputs during the output phase, the outputs continue unabated, and the systolic array matrix accumulators automatically reset once the outputs are complete.
+    - However, if the user chooses not to write new inputs during the output phase, the outputs continue unabated, and the systolic array matrix accumulators automatically reset once the outputs are complete.
 
 #### Critical Timing Relationships
 
@@ -271,7 +271,7 @@ The module will assume an order of input of A matrix values and B matrix values,
     - Note that if new matrices are not input during the output cycle, i.e. the `ui_in` pin is set to 0, then it is the equivalent of     "flushing the pipeline", as once the output is complete, it is the equivalent of starting at step 2.
 
 
-Visual of an example matrix multiplication round through the systolic array:
+Below is a visual of an example matrix multiplication round through the systolic array. Note that while it behaves similarly to the chip, the chip's matrix inputs to the systolic array are the diagram's order inverted across the matrix diagonal.
 
 ![Alt text](Matrix-Multiplication-Round-Systolic.png)
 
@@ -318,8 +318,10 @@ An external microcontroller will send signals over the chip interface, including
 
 ## Acknowledgements
 
-* William Zhang: Processing Elements, Systolic Array, General Design/Synthesis, Pipelining
+* William Zhang: Processing Elements, Systolic Array, Module Compilation & Integration, Pipelining Optimization
 * Ethan Leung: Matrix Unit Feeder
 * Guhan Iyer: Unified Memory
 * Yash Karthik: Control Unit
 * ECE 298A Course Staff: Prof. John Long, Prof. Vincent Gaudet, Refik Yalcin
+
+An earlier iteration of this project is located at [this](https://github.com/YashKarthik/tpu) repository, in which the original plan was to submit to the IHP25B shuttle.
