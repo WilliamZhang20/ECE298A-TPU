@@ -142,3 +142,7 @@ gtkwave tb.vcd
 # Surfer
 surfer tb.vcd
 ```
+
+## Post-Silicon Tests
+
+A future Python script that interfaces with the chip via the Caravel SoC can feed data and read outputs.
