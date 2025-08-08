@@ -37,9 +37,7 @@ module tt_um_tpu (
     wire done;
     wire [1:0] state;
 
-    wire [7:0] stage1;
-    wire [7:0] stage2;
-    wire [7:0] stage3;
+    wire [7:0] stage1, stage2, stage3, stage4, stage5;
 
     // Module Instantiations
     memory mem (
@@ -104,9 +102,11 @@ module tt_um_tpu (
             (* keep *) buffer buf1 (.A(out_data[i]), .X(stage1[i]));
             (* keep *) buffer buf2 (.A(stage1[i]), .X(stage2[i]));
             (* keep *) buffer buf3 (.A(stage2[i]), .X(stage3[i]));
+            (* keep *) buffer buf4 (.A(stage3[i]), .X(stage4[i]));
+            (* keep *) buffer buf5 (.A(stage4[i]), .X(stage5[i]));
         end
     endgenerate
-    assign uo_out = stage3;
+    assign uo_out = stage5;
     assign uio_out = {done, state, 5'b0};
     assign uio_oe = 8'b11100000;
 
