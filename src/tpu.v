@@ -39,7 +39,7 @@ module tt_um_tpu (
 
     wire [7:0] stage1, stage2, stage3;
 
-    wire [7:0] uio_s1, uio_s2, uio_s3, uio_s4;
+    wire [7:0] uio_s1, uio_s2, uio_s3, uio_s4, uio_s5, uio_s6;
 
     // Module Instantiations
     memory mem (
@@ -116,9 +116,11 @@ module tt_um_tpu (
             (* keep *) buffer buf21 (.A(uio_s1[j]), .X(uio_s2[j]));
             (* keep *) buffer buf22 (.A(uio_s2[j]), .X(uio_s3[j]));
             (* keep *) buffer buf23 (.A(uio_s3[j]), .X(uio_s4[j]));
+            (* keep *) buffer buf23 (.A(uio_s4[j]), .X(uio_s5[j]));
+            (* keep *) buffer buf23 (.A(uio_s5[j]), .X(uio_s6[j]));
         end
     endgenerate
-    assign uio_out = uio_s4;
+    assign uio_out = uio_s6;
     assign uio_oe = 8'b11100000;
 
     wire _unused = &{ena, uio_in[7:3]};
