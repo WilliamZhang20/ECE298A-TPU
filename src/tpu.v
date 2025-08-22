@@ -113,9 +113,9 @@ module tt_um_tpu (
     genvar j;
     generate
         for (j = 0; j < 8; j = j + 1) begin : uio_bufs
-            (* keep *) buffer buf21 (.A(uio_s1[j]), .X(uio_s2[j]));
-            (* keep *) buffer buf22 (.A(uio_s2[j]), .X(uio_s3[j]));
-            (* keep *) buffer buf23 (.A(uio_s3[j]), .X(uio_s4[j]));
+            (* keep *) sky130_fd_sc_hd__buf_4 buf21 (.A(uio_s1[j]), .X(uio_s2[j]));
+            (* keep *) sky130_fd_sc_hd__buf_4 buf22 (.A(uio_s2[j]), .X(uio_s3[j]));
+            (* keep *) sky130_fd_sc_hd__buf_4 buf23 (.A(uio_s3[j]), .X(uio_s4[j]));
         end
     endgenerate
     assign uio_out = uio_s4;
