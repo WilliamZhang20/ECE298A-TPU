@@ -116,8 +116,8 @@ module tt_um_tpu (
             (* keep *) buffer buf21 (.A(uio_s1[j]), .X(uio_s2[j]));
             (* keep *) buffer buf22 (.A(uio_s2[j]), .X(uio_s3[j]));
             (* keep *) buffer buf23 (.A(uio_s3[j]), .X(uio_s4[j]));
-            (* keep *) buffer buf23 (.A(uio_s4[j]), .X(uio_s5[j]));
-            (* keep *) buffer buf23 (.A(uio_s5[j]), .X(uio_s6[j]));
+            (* keep *) buffer buf24 (.A(uio_s4[j]), .X(uio_s5[j]));
+            (* keep *) buffer buf25 (.A(uio_s5[j]), .X(uio_s6[j]));
         end
     endgenerate
     assign uio_out = uio_s6;
