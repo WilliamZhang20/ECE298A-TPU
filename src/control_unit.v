@@ -68,7 +68,7 @@ module control_unit (
     end
 
     // State Machine
-    always @(posedge clk or posedge rst) begin
+    always @(posedge clk) begin
         if (rst) begin
             state <= S_IDLE;
             mmu_cycle <= 0;

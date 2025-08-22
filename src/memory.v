@@ -13,7 +13,7 @@ module memory (
     reg [7:0] sram [0:7]; // 8 locations: 0-3 for weights, 4-7 for inputs
     integer i;
 
-    always @(posedge clk or posedge rst) begin
+    always @(posedge clk) begin
         if (rst) begin
             for (i = 0; i < 8; i = i + 1) begin
                 sram[i] <= 8'b0;

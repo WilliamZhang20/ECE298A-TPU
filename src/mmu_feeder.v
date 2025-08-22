@@ -55,7 +55,7 @@ module mmu_feeder (
     reg [7:0] tail_hold; // since clear occurs at output of 4th element we want to preserve it... :)
 
     // Sequential logic for control and data outputs
-    always @(posedge clk or posedge rst) begin
+    always @(posedge clk) begin
         if (rst) begin
             output_count <= 0;
             tail_hold <= 8'b0;

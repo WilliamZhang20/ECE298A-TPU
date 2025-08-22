@@ -13,7 +13,7 @@ module PE #(
     output reg signed [WIDTH*2-1:0] c_out
 );
 
-    always @(posedge clk or posedge rst) begin
+    always @(posedge clk) begin
         a_out <= a_in;
         b_out <= b_in;
         if (rst) begin
