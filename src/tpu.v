@@ -37,9 +37,9 @@ module tt_um_tpu (
     wire done;
     wire [1:0] state;
 
-    wire [7:0] stage1;
-    wire [7:0] stage2;
-    wire [7:0] stage3;
+    wire [7:0] stage1, stage2, stage3;
+
+    wire [7:0] uio_s1, uio_s2, uio_s3, uio_s4;
 
     // Module Instantiations
     memory mem (
@@ -107,7 +107,18 @@ module tt_um_tpu (
         end
     endgenerate
     assign uo_out = stage3;
-    assign uio_out = {done, state, 5'b0};
+
+    assign uio_s1 = {done, state, 5'b0};
+
+    genvar j;
+    generate
+        for (j = 0; j < 8; j = j + 1) begin : uio_bufs
+            (* keep *) buffer buf21 (.A(uio_s1[j]), .X(uio_s2[j]));
+            (* keep *) buffer buf22 (.A(uio_s2[j]), .X(uio_s3[j]));
+            (* keep *) buffer buf23 (.A(uio_s3[j]), .X(uio_s4[j]));
+        end
+    endgenerate
+    assign uio_out = uio_s4;
     assign uio_oe = 8'b11100000;
 
     wire _unused = &{ena, uio_in[7:3]};
