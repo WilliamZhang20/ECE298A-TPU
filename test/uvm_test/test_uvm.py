@@ -46,20 +46,31 @@ from pyuvm import uvm_driver
 from cocotb.triggers import RisingEdge
 
 class MatMulDriver(uvm_driver):
+    def build_phase(self):
+        self.exp_ap = uvm_analysis_port("exp_ap", self)
+
     async def run_phase(self):
         dut = cocotb.top
         while True:
             txn = await self.seq_item_port.get_next_item()
-            # load A
+
+            # Load A (4 cycles)
             for val in txn.A:
                 dut.ui_in.value = val
                 dut.uio_in.value = (txn.transpose << 1) | (txn.relu << 2) | 1
                 await RisingEdge(dut.clk)
-            # load B
+
+            # Load B (4 cycles)
             for val in txn.B:
                 dut.ui_in.value = val
                 dut.uio_in.value = (txn.transpose << 1) | (txn.relu << 2) | 1
                 await RisingEdge(dut.clk)
+
+            await ClockCycles(dut.clk, 5) # A safe guess for a small pipeline latency.
+            
+            # Now, the monitor has had time to read the result.
+            # Send expected results to scoreboard.
+            self.exp_ap.write(txn.expected())
 
             self.seq_item_port.item_done()
 
@@ -75,18 +86,32 @@ class MatMulMonitor(uvm_component):
         dut = self.dut
         while True:
             results = []
-            for _ in range(2):
-                dut.ui_in.value = 0
+            
+            for _ in range(4): # 4 values to read
+                dut.ui_in.value = 0 # Dummy input during read phase
                 await ClockCycles(dut.clk, 1)
                 high = dut.uo_out.value.integer
-                dut.ui_in.value = 0
+                await ClockCycles(dut.clk, 1)
+                low = dut.uo_out.value.integer
+                
+                combined = (high << 8) | low
+                if combined >= 0x8000:
+                    combined -= 0x10000
+                results.append(combined)
+                
+            # Corrected monitor loop
+            all_results = []
+            for _ in range(4): # Loop to read 4 final values
+                await ClockCycles(dut.clk, 1)
+                high = dut.uo_out.value.integer
                 await ClockCycles(dut.clk, 1)
                 low = dut.uo_out.value.integer
                 combined = (high << 8) | low
                 if combined >= 0x8000:
                     combined -= 0x10000
-                results.append(combined)
-            self.ap.write(results)
+                all_results.append(combined)
+
+            self.ap.write(all_results)
 
 from pyuvm import uvm_component, uvm_tlm_analysis_fifo
 
@@ -121,15 +146,41 @@ class MatMulEnv(uvm_env):
     def connect_phase(self):
         self.driver.seq_item_port.connect(self.seqr.seq_item_export)
         self.monitor.ap.connect(self.scoreboard.out_export)
+        self.driver.exp_ap.connect(self.scoreboard.exp_export)
+
+from pyuvm import uvm_sequence, uvm_sequence_item
+
+class MatrixTxn(uvm_sequence_item):
+    def __init__(self, name="MatrixTxn"):
+        super().__init__(name)
+        self.A = [0]*4
+        self.B = [0]*4
+        self.transpose = 0
+        self.relu = 0
+
+    def expected(self):
+        import numpy as np
+        A = np.array(self.A).reshape(2,2)
+        B = np.array(self.B).reshape(2,2)
+        if self.transpose:
+            B = B.T
+        result = A @ B
+        if self.relu:
+            result = np.maximum(result, 0)
+        return result.flatten().tolist()
 
 from pyuvm import uvm_sequence
 
 class SimpleSeq(uvm_sequence):
     async def body(self):
-        txn = MatMulSeqItem("txn1", A=[1,2,3,4], B=[5,6,7,8], transpose=False, relu=False)
-        await self.start_item(txn)
-        await self.finish_item(txn)
-        self.logger.info(f"Expected {txn.expected()}")
+        txn = MatrixTxn("txn1")      # create transaction
+        txn.A = [1, 2, 3, 4]
+        txn.B = [5, 6, 7, 8]
+        txn.transpose = 1
+        txn.relu = 1
+
+        await self.start_item(txn)   # pass the transaction to the driver
+        await self.finish_item(txn)  # mark it done
 
 import cocotb
 from cocotb.clock import Clock

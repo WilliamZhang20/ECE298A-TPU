@@ -44,9 +44,10 @@ endif
 # Allow sharing configuration between design and testbench via `include`:
 COMPILE_ARGS 		+= -I$(SRC_DIR)
 
-.PHONY: all test-memory test-systolic-array test-control-unit test-mmu-feeder test-nn test-top
+.PHONY: all test-uvm test-memory test-systolic-array test-control-unit test-mmu-feeder test-nn test-top
 
 all:
+	$(MAKE) test-uvm
 	$(MAKE) test-memory
 	$(MAKE) test-systolic-array
 	$(MAKE) test-control-unit
