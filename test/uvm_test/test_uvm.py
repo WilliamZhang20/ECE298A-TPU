@@ -1,3 +1,81 @@
+from pyuvm import uvm_object
+from pyuvm import ConfigDB
+import cocotb
+
+from pyuvm import uvm_subscriber, UVMConfigItemNotFound
+import numpy as np
+
+class MatMulCoverage(uvm_subscriber):
+    def end_of_elaboration_phase(self):
+        # A set to store the covered combinations (e.g., (transpose, relu))
+        self.covered_combos = set()
+        # Define all possible combinations you want to cover
+        self.all_combos = {(False, False), (True, False), (False, True), (True, True)}
+
+    def write(self, txn):
+        # This method is called whenever a transaction is sent to the analysis port
+        combination = (txn.transpose, txn.relu)
+        self.covered_combos.add(combination)
+        self.logger.info(f"COVERAGE: Captured combination: {combination}")
+
+    def report_phase(self):
+        # The report phase runs at the end of the test
+        missed_combos = self.all_combos - self.covered_combos
+        if len(missed_combos) > 0:
+            self.logger.error(f"Functional coverage error. Missed combinations: {missed_combos}")
+            # TODO: COVER ALL!
+            # assert False, "Functional coverage failed"
+        else:
+            self.logger.info("Covered all specified combinations.")
+            # assert True
+
+class MatMulConfig(uvm_object):
+    def __init__(self, name="MatMulConfig"):
+        super().__init__(name)
+        self.dut = cocotb.top
+        self.bfm = None
+
+import cocotb
+from cocotb.triggers import RisingEdge, ClockCycles
+
+class MatMulBfm:
+    def __init__(self, dut):
+        self.dut = dut
+        self.log = dut._log
+
+    async def send_op(self, A, B, transpose, relu):
+        """Drives the input signals of the DUT based on transaction data."""
+        self.log.info("BFM: Sending inputs for A and B")
+        # Load A
+        for val in A:
+            self.dut.ui_in.value = val
+            self.dut.uio_in.value = (transpose << 1) | (relu << 2) | 1
+            await RisingEdge(self.dut.clk)
+        
+        # Load B
+        for val in B:
+            self.dut.ui_in.value = val
+            self.dut.uio_in.value = (transpose << 1) | (relu << 2) | 1
+            await RisingEdge(self.dut.clk)
+
+    async def get_result(self):
+        """Passively observes and reads the output signals from the DUT."""
+        results = []
+        self.log.info("BFM: Reading output")
+        # Assuming a fixed latency. In a real design, you'd wait for a signal
+        await ClockCycles(self.dut.clk, 5) 
+
+        for _ in range(4): 
+            await ClockCycles(self.dut.clk, 1)
+            high = self.dut.uo_out.value.integer
+            await ClockCycles(self.dut.clk, 1)
+            low = self.dut.uo_out.value.integer
+            combined = (high << 8) | low
+            if combined >= 0x8000:
+                combined -= 0x10000
+            results.append(combined)
+        return results
+
 from pyuvm import uvm_sequence_item
 import numpy as np
 
@@ -42,91 +120,66 @@ class MatMulSeqItem(uvm_sequence_item):
             result = np.maximum(result, 0)
         return result.flatten().tolist()
 
-from pyuvm import uvm_driver
+from pyuvm import uvm_driver, uvm_analysis_port
 from cocotb.triggers import RisingEdge
+import cocotb
 
 class MatMulDriver(uvm_driver):
     def build_phase(self):
-        self.exp_ap = uvm_analysis_port("exp_ap", self)
+        super().build_phase()
+        self.cmd_ap = uvm_analysis_port("cmd_ap", self)
+
+    def start_of_simulation_phase(self):
+        # Get the config object from the ConfigDB
+        self.config = ConfigDB().get(self, "", "matmul_config")
+        # Access the BFM from the config object
+        self.bfm = self.config.bfm
 
     async def run_phase(self):
-        dut = cocotb.top
+        # ... (same as before, using self.bfm)
         while True:
             txn = await self.seq_item_port.get_next_item()
-
-            # Load A (4 cycles)
-            for val in txn.A:
-                dut.ui_in.value = val
-                dut.uio_in.value = (txn.transpose << 1) | (txn.relu << 2) | 1
-                await RisingEdge(dut.clk)
-
-            # Load B (4 cycles)
-            for val in txn.B:
-                dut.ui_in.value = val
-                dut.uio_in.value = (txn.transpose << 1) | (txn.relu << 2) | 1
-                await RisingEdge(dut.clk)
-
-            await ClockCycles(dut.clk, 5) # A safe guess for a small pipeline latency.
-            
-            # Now, the monitor has had time to read the result.
-            # Send expected results to scoreboard.
-            self.exp_ap.write(txn.expected())
-
+            await self.bfm.send_op(txn.A, txn.B, txn.transpose, txn.relu)
+            self.cmd_ap.write(txn)
             self.seq_item_port.item_done()
 
 from pyuvm import uvm_component, uvm_analysis_port
-from cocotb.triggers import ClockCycles
 
 class MatMulMonitor(uvm_component):
     def build_phase(self):
+        super().build_phase()
         self.ap = uvm_analysis_port("ap", self)
-        self.dut = cocotb.top
+
+    def start_of_simulation_phase(self):
+        # Get the config object from the ConfigDB
+        self.config = ConfigDB().get(self, "", "matmul_config")
+        # Access the BFM from the config object
+        self.bfm = self.config.bfm
 
     async def run_phase(self):
-        dut = self.dut
         while True:
-            results = []
-            
-            for _ in range(4): # 4 values to read
-                dut.ui_in.value = 0 # Dummy input during read phase
-                await ClockCycles(dut.clk, 1)
-                high = dut.uo_out.value.integer
-                await ClockCycles(dut.clk, 1)
-                low = dut.uo_out.value.integer
-                
-                combined = (high << 8) | low
-                if combined >= 0x8000:
-                    combined -= 0x10000
-                results.append(combined)
-                
-            # Corrected monitor loop
-            all_results = []
-            for _ in range(4): # Loop to read 4 final values
-                await ClockCycles(dut.clk, 1)
-                high = dut.uo_out.value.integer
-                await ClockCycles(dut.clk, 1)
-                low = dut.uo_out.value.integer
-                combined = (high << 8) | low
-                if combined >= 0x8000:
-                    combined -= 0x10000
-                all_results.append(combined)
-
-            self.ap.write(all_results)
+            actual_result = await self.bfm.get_result()
+            self.ap.write(actual_result)
 
 from pyuvm import uvm_component, uvm_tlm_analysis_fifo
 
 class MatMulScoreboard(uvm_component):
     def build_phase(self):
-        self.exp_fifo = uvm_tlm_analysis_fifo("exp_fifo", self)
+        super().build_phase()
+        self.cmd_fifo = uvm_tlm_analysis_fifo("cmd_fifo", self) # New FIFO for commands
         self.out_fifo = uvm_tlm_analysis_fifo("out_fifo", self)
-        self.exp_export = self.exp_fifo.analysis_export
+        self.cmd_export = self.cmd_fifo.analysis_export
         self.out_export = self.out_fifo.analysis_export
 
     def check_phase(self):
         passed = True
         while self.out_fifo.can_get():
             _, got = self.out_fifo.try_get()
-            _, exp = self.exp_fifo.try_get()
+            _, cmd_txn = self.cmd_fifo.try_get() # Get the original transaction
+            
+            # The scoreboard now calculates the expected value
+            exp = cmd_txn.expected()
+            
             if got != exp:
                 self.logger.error(f"FAIL: got {got}, expected {exp}")
                 passed = False
@@ -139,14 +192,21 @@ from pyuvm import uvm_env, uvm_sequencer
 class MatMulEnv(uvm_env):
     def build_phase(self):
         self.seqr = uvm_sequencer("seqr", self)
-        self.driver = MatMulDriver.create("driver", self)
+        self.config = MatMulConfig("matmul_config")
+        self.config.bfm = MatMulBfm(self.config.dut)
+        ConfigDB().set(self, "*", "matmul_config", self.config)
+        
+        self.driver = MatMulDriver("driver", self)
         self.monitor = MatMulMonitor("monitor", self)
         self.scoreboard = MatMulScoreboard("scoreboard", self)
+        
+        self.coverage = MatMulCoverage("coverage", self)
 
     def connect_phase(self):
         self.driver.seq_item_port.connect(self.seqr.seq_item_export)
+        self.driver.cmd_ap.connect(self.scoreboard.cmd_export)
         self.monitor.ap.connect(self.scoreboard.out_export)
-        self.driver.exp_ap.connect(self.scoreboard.exp_export)
+        self.driver.cmd_ap.connect(self.coverage.analysis_export)
 
 from pyuvm import uvm_sequence, uvm_sequence_item
 
