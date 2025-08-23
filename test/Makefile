@@ -54,6 +54,16 @@ all:
 	$(MAKE) test-nn
 	$(MAKE) test-top
 
+test-uvm:
+	$(MAKE) clean
+	$(MAKE) sim \
+		TOPLEVEL=tb \
+		MODULE=test_uvm \
+		VERILOG_SOURCES="$(WAVES_ROOT)/uvm_test/tb.v $(addprefix $(SRC_DIR)/,tpu.v delay_cell.v systolic_array_2x2.v PE.v mmu_feeder.v control_unit.v memory.v)" \
+		PYTHONPATH=$(WAVES_ROOT)/uvm_test \
+		WAVES_DIR=$(WAVES_ROOT)/uvm_test/wave \
+		COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/uvm_test/wave/uvm_tb_$(TIMESTAMP).vcd\""'
+
 test-top:
 	$(MAKE) clean
 	$(MAKE) sim \
