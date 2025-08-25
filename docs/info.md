@@ -280,7 +280,7 @@ The first is the ability to compute the product $AB^T$, which is the first matri
 
 The second is the ability to run the Rectified Linear Unit (ReLU) activation function, commonly seen in neural networks for approximating non-linear patterns in data. 
 
-The third, which is provided as a software interface option in the `test/tpu/test_tpu.py` Python script's `matmul` function, is the ability to multiply bigger matrices, of all compatible dimensions, in 2x2 blocks.
+The third, which is provided as a software interface option, is the ability to multiply bigger matrices, of all compatible dimensions, in 2x2 blocks.
 
 ### Example Result
 
@@ -294,13 +294,9 @@ One can also observe the pattern in which elements are fed into the systolic arr
 
 ### Scaling it up
 
-Earlier, it was mentioned that you could scale the multiplication up to any dimension. What else does this mean? AI inference! In the file `test/tpu/neural_inference.py`, a demonstration is given of running forward inference of a Quantization-Aware-Trained (QAT) machine learning model written in PyTorch using the chip's logic. 
+Earlier, it was mentioned that you could scale the multiplication up to any dimension. What else does this mean? AI inference! We are able to run forward inference of a Quantization-Aware-Trained (QAT) machine learning model using the chip's logic. 
 
 The model is trained to recognize black-and-white images of single handwritten digits from the MNIST dataset.
-
-What is QAT? Let's start with the problem. Generally, while running AI inference with lower-precision weights saves both throughput and memory, training is done in higher precision to maximize model convergence and accuracy. 
-
-To enable easy conversion between the two without sacrificing the accuracy of the model, the quantization from higher to lower precision is factored into the training process, whereby values are first quantized during the forward pass before backwards propagation, so that it preemptively offsets for potential accuracy loss during the quantization process.
 
 In the demonstration, which is kept simple, I run QAT on the local PC, and then run forward inference with this model on the chip. It was able to successfully recognize 2 out of 3 images in a test batch, which is far superior to a coin flip.
 
