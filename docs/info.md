@@ -50,7 +50,7 @@ Once the multiplication is done, the control unit will want to clear the PEs so 
 
 On the other hand, it is non-ideal to reset the entire chip, as it wastes time (an entire clock cycle) and is unnecessary to reset other elements such as memory.
 
-The output is 16 bits for the 8-bit inputs, to account for the property of multiplication, as `0xFF` multiplied by `0xFF` is `0xFE01`, which is 16 bits wide. Moreover, it is also signed, so each input/weight value can range from decimal -128 to 127.
+The output is 16 bits for the 8-bit inputs, to account for the property of multiplication.
 
 ### The Systolic Array
 
@@ -262,11 +262,8 @@ The module will assume an order of input of A matrix values and B matrix values,
     - Output elements will be 16 bits each, but since the output port is only 8 bits, one element is output in 2 cycles, with the upper half (bits 15 - 8) in the first cycle, and the lower half (bits 7 - 0) in the second cycle.
     - To collect outputs, wait for a single clock edge, and then read the `uo_out` pin for the 8-bit value. Repeat again to get the full 16-bit value. Overall, the matrix output at `uo_out` will be in the order of c_00, c_01, c_10, c_11, taking 8 cycles to output 4 elements.
     - For the above example, the output would be in the order of [19, 22, 43, 50], starting from the cycle right after you finish your last load, and ending 8 cycles afterwards.
-    - To maximize throughput, it is also recommended that in those same 8 cycles, the next 2 input matrices are sent to the `ui_in` pin. That will be 1 element per cycle for 2 serial, row-major 2x2 matrix inputs, for 8 cycles total.
+    - It is also recommended that in those same 8 cycles, the next 2 input matrices are sent to the `ui_in` pin. That will be 1 element per cycle for 2 serial, row-major 2x2 matrix inputs, for 8 cycles total.
 4. Repeat
-    - If the optimal choice was taken to input the next matrix inputs during the output cycles, then right after taking the first output, you can take the output of the second product. That second product is from the matrices input during the first output round.
-    - That way, both input and output ports are fully utilized, and throughput is maxed out on the chip!
-    - In other words, inputting the next matrices while reading outputs of the previous inputs is exploiting the chip's streaming processing capabilities.
 5. Input Options
     - Note that if new matrices are not input during the output cycle, i.e. the `ui_in` pin is set to 0, then it is the equivalent of     "flushing the pipeline", as once the output is complete, it is the equivalent of starting at step 2.
 
@@ -279,16 +276,11 @@ Below is a visual of an example matrix multiplication round through the systolic
 
 The example shown above is a very simple and plain 2x2 matrix multiplication. However, this TPU chip offers additional options. 
 
-The first is the ability to compute the product $AB^T$, which is the first matrix multiplied by the transpose of the second. Simply setting the `uio_in` pin at index 1 to active high before or during the input of the second matrix will multiplex the order in which the elements are fed into the systolic array. This ultimately feeds the transpose of the second matrix into the product. 
-- The benefit of using the chip's implementation is that it saves time computing a transpose taken by a CPU instruction in $O(n^2)$ time, where n is a rough measure of the matrix dimension. Instead, it is fused with the entire process, taking no extra time.
+The first is the ability to compute the product $AB^T$, which is the first matrix multiplied by the transpose of the second. This saves time computing a transpose taken by a CPU instruction in $O(n^2)$ time, where n is a rough measure of the matrix dimension. Instead, it is fused with the entire process, taking no extra time.
 
 The second is the ability to run the Rectified Linear Unit (ReLU) activation function, commonly seen in neural networks for approximating non-linear patterns in data. 
 
-The third, which is provided as a software interface option in the `test/tpu/test_tpu.py` Python script's `matmul` function, is the ability to multiply bigger matrices, of all compatible dimensions, in 2x2 blocks. This will run the chip multiple times in a streaming fashion. If the matrix dimensions are odd, since the block size is even, it will pad zeros and then truncate the output matrix back to size. 
-
-1) The input matrix elements can only range from -128 to 127, and:
-    
-2) The fused ReLU is not doable within individual blocks of a larger matrix product, as it is nonlinear and cannot be distributed within the result block sums. Therefore, the software must incur a cost at the end to apply any nonlinear activation function.
+The third, which is provided as a software interface option, is the ability to multiply bigger matrices, of all compatible dimensions, in 2x2 blocks.
 
 ### Example Result
 
@@ -302,13 +294,9 @@ One can also observe the pattern in which elements are fed into the systolic arr
 
 ### Scaling it up
 
-Earlier, it was mentioned that you could scale the multiplication up to any dimension. What else does this mean? AI inference! In the file `test/tpu/neural_inference.py`, a demonstration is given of running forward inference of a Quantization-Aware-Trained (QAT) machine learning model written in PyTorch using the chip's logic. 
+Earlier, it was mentioned that you could scale the multiplication up to any dimension. What else does this mean? AI inference! We are able to run forward inference of a Quantization-Aware-Trained (QAT) machine learning model using the chip's logic. 
 
 The model is trained to recognize black-and-white images of single handwritten digits from the MNIST dataset.
-
-What is QAT? Let's start with the problem. Generally, while running AI inference with lower-precision weights saves both throughput and memory, training is done in higher precision to maximize model convergence and accuracy. 
-
-To enable easy conversion between the two without sacrificing the accuracy of the model, the quantization from higher to lower precision is factored into the training process, whereby values are first quantized during the forward pass before backwards propagation, so that it preemptively offsets for potential accuracy loss during the quantization process.
 
 In the demonstration, which is kept simple, I run QAT on the local PC, and then run forward inference with this model on the chip. It was able to successfully recognize 2 out of 3 images in a test batch, which is far superior to a coin flip.
 
