@@ -69,6 +69,14 @@ train_model(model, train_loader)
 model.eval()
 model = convert(model)
 
+# Extract graph in TorchScript
+example_input = torch.randn(1, 784)
+
+scripted_model = torch.jit.trace(model, example_input)
+
+# Save the TorchScript model
+torch.jit.save(scripted_model, 'qat_model_scripted.pt')
+
 # Extract scales and weights
 weights = {}
 weights['fc1'] = model.fc1.weight().int_repr().numpy().astype(np.int8)
@@ -85,16 +93,16 @@ model_data = {
     'weights': weights,
     'scales': scales
 }
-torch.save(model_data, 'tpu/qat_model.pt')
+torch.save(model_data, 'qat_model.pt')
 
 # Save test data
 test_images, test_labels = next(iter(test_loader))
-test_images = test_images[:3].view(-1, 784)
+test_images = test_images[:5].view(-1, 784)
 scale = 255 / 1.0
 zero_point = -128
 test_images_int8 = torch.clamp(torch.round(test_images * scale + zero_point), -128, 127).to(torch.int8).numpy()
-test_labels = test_labels[:3].numpy()
-np.savez('tpu/mnist_test_data.npz', images=test_images_int8, labels=test_labels)
+test_labels = test_labels[:5].numpy()
+np.savez('mnist_test_data.npz', images=test_images_int8, labels=test_labels)
 
 # Test accuracy
 correct = 0
