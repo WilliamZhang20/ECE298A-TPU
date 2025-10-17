@@ -4,4 +4,3 @@ numpy==2.1.3
 torch
 torchvision
 pyuvm
-torch-mlir
