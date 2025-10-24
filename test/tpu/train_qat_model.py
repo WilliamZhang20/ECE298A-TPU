@@ -4,6 +4,8 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
 from torch.quantization import QuantStub, DeQuantStub, prepare_qat, convert
+from torch_mlir.fx import export_and_import
+import torch_mlir
 import numpy as np
 
 class FCNet(nn.Module):
@@ -65,17 +67,31 @@ model = FCNet()
 model = prepare_model(model, qconfig='fbgemm')
 train_model(model, train_loader)
 
+example_input = (torch.randn(1, 784),)
+
+try:
+    exported_program = torch.export.export(
+        model,
+        example_input,
+    )
+    print("Model successfully captured using torch.export.")
+except Exception as e:
+    print(f"Error during torch.export: {e}")
+    print("Ensure you are using a recent PyTorch version (2.1+).")
+    raise
+
+mlir_module = export_and_import(
+    exported_program,
+)
+
+with open('qat_model_torch_dialect.mlir', 'w') as f:
+    f.write(str(mlir_module))
+
+print("Quantized model successfully exported to MLIR 'torch' dialect: qat_model_torch_dialect.mlir")
+
 # Convert to quantized model
 model.eval()
 model = convert(model)
-
-# Extract graph in TorchScript
-example_input = torch.randn(1, 784)
-
-scripted_model = torch.jit.trace(model, example_input)
-
-# Save the TorchScript model
-torch.jit.save(scripted_model, 'qat_model_scripted.pt')
 
 # Extract scales and weights
 weights = {}
