@@ -82,12 +82,13 @@ except Exception as e:
 
 mlir_module = export_and_import(
     exported_program,
+    target_path="tosa"
 )
 
 with open('qat_model_torch_dialect.mlir', 'w') as f:
     f.write(str(mlir_module))
 
-print("Quantized model successfully exported to MLIR 'torch' dialect: qat_model_torch_dialect.mlir")
+print("Quantized model successfully exported to MLIR 'TOSA' dialect: qat_model_torch_dialect.mlir")
 
 # Convert to quantized model
 model.eval()
