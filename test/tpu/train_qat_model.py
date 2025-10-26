@@ -4,8 +4,6 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
 from torch.quantization import QuantStub, DeQuantStub, prepare_qat, convert
-from torch_mlir.fx import export_and_import
-import torch_mlir
 import numpy as np
 
 class FCNet(nn.Module):
@@ -52,84 +50,50 @@ def train_model(model, train_loader, epochs=5):
                 print(f'[Epoch {epoch + 1}, Batch {i + 1}] Loss: {running_loss / 100:.4f}')
                 running_loss = 0.0
 
-# Set quantization backend
-torch.backends.quantized.engine = 'fbgemm'
+def main():
+    # Set quantization backend
+    torch.backends.quantized.engine = 'fbgemm'
 
-# Data loading
-transform = transforms.Compose([transforms.ToTensor()])
-train_dataset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
-test_dataset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+    # Data loading
+    transform = transforms.Compose([transforms.ToTensor()])
+    train_dataset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+    test_dataset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
 
-# Train and quantize model
-model = FCNet()
-model = prepare_model(model, qconfig='fbgemm')
-train_model(model, train_loader)
+    # Train and quantize model
+    model = FCNet()
+    model = prepare_model(model, qconfig='fbgemm')
+    train_model(model, train_loader)
 
-example_input = (torch.randn(1, 784),)
+    # Convert to quantized model
+    model.eval()
+    quantized_model = convert(model)
 
-try:
-    exported_program = torch.export.export(
-        model,
-        example_input,
-    )
-    print("Model successfully captured using torch.export.")
-except Exception as e:
-    print(f"Error during torch.export: {e}")
-    print("Ensure you are using a recent PyTorch version (2.1+).")
-    raise
+    torch.save({
+        'model_state_dict': quantized_model.state_dict()
+    }, 'qat_model.pt')
 
-mlir_module = export_and_import(
-    exported_program,
-    target_path="tosa"
-)
+    # Save test data
+    test_images, test_labels = next(iter(test_loader))
+    test_images = test_images[:5].view(-1, 784)
+    scale = 255 / 1.0
+    zero_point = -128
+    test_images_int8 = torch.clamp(torch.round(test_images * scale + zero_point), -128, 127).to(torch.int8).numpy()
+    test_labels = test_labels[:5].numpy()
+    np.savez('mnist_test_data.npz', images=test_images_int8, labels=test_labels)
 
-with open('qat_model_torch_dialect.mlir', 'w') as f:
-    f.write(str(mlir_module))
+    # Test accuracy
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images = images.view(-1, 784)
+            outputs = model(images)
+            _, predicted = torch.max(outputs, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+    print(f'Test Accuracy: {100 * correct / total:.2f}%')
 
-print("Quantized model successfully exported to MLIR 'TOSA' dialect: qat_model_torch_dialect.mlir")
-
-# Convert to quantized model
-model.eval()
-model = convert(model)
-
-# Extract scales and weights
-weights = {}
-weights['fc1'] = model.fc1.weight().int_repr().numpy().astype(np.int8)
-weights['fc2'] = model.fc2.weight().int_repr().numpy().astype(np.int8)
-
-# Get scales from quantization parameters
-fc1_activation_scale = model.activation_quant.scale.item()
-scales = {
-    'fc1_activation_scale': fc1_activation_scale,
-    'fc2_output_scale': 1.0  # No quantization on output
-}
-
-model_data = {
-    'weights': weights,
-    'scales': scales
-}
-torch.save(model_data, 'qat_model.pt')
-
-# Save test data
-test_images, test_labels = next(iter(test_loader))
-test_images = test_images[:5].view(-1, 784)
-scale = 255 / 1.0
-zero_point = -128
-test_images_int8 = torch.clamp(torch.round(test_images * scale + zero_point), -128, 127).to(torch.int8).numpy()
-test_labels = test_labels[:5].numpy()
-np.savez('mnist_test_data.npz', images=test_images_int8, labels=test_labels)
-
-# Test accuracy
-correct = 0
-total = 0
-model.eval()
-with torch.no_grad():
-    for images, labels in test_loader:
-        images = images.view(-1, 784)
-        outputs = model(images)
-        _, predicted = torch.max(outputs, 1)
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
-print(f'Test Accuracy: {100 * correct / total:.2f}%')
+if __name__ == "__main__":
+    main()
