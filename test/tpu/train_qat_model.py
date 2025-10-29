@@ -5,6 +5,9 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.quantization import QuantStub, DeQuantStub, prepare_qat, convert
 import numpy as np
+# import HW simulation CocoTB
+import cocotb
+from cocotb.clock import Clock
 
 class FCNet(nn.Module):
     def __init__(self):
@@ -12,8 +15,6 @@ class FCNet(nn.Module):
         self.quant = QuantStub()
         self.fc1 = nn.Linear(784, 128)
         self.relu = nn.ReLU()
-        self.dequant_act = DeQuantStub()
-        self.activation_quant = QuantStub()
         self.fc2 = nn.Linear(128, 10)
         self.dequant = DeQuantStub()
 
@@ -21,79 +22,68 @@ class FCNet(nn.Module):
         x = self.quant(x)
         x = self.fc1(x)
         x = self.relu(x)
-        x = self.dequant_act(x)
-        x = self.activation_quant(x)
         x = self.fc2(x)
         x = self.dequant(x)
         return x
 
-def prepare_model(model, qconfig='fbgemm'):
-    model.qconfig = torch.quantization.get_default_qat_qconfig(qconfig)
-    model = prepare_qat(model, inplace=False)
-    return model
-
-def train_model(model, train_loader, epochs=5):
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
-    model.train()
-    for epoch in range(epochs):
-        running_loss = 0.0
-        for i, (images, labels) in enumerate(train_loader):
-            images = images.view(-1, 784)
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-            if i % 100 == 99:
-                print(f'[Epoch {epoch + 1}, Batch {i + 1}] Loss: {running_loss / 100:.4f}')
-                running_loss = 0.0
-
-def main():
-    # Set quantization backend
+def get_quantized_model():
     torch.backends.quantized.engine = 'fbgemm'
 
-    # Data loading
     transform = transforms.Compose([transforms.ToTensor()])
-    train_dataset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
-    test_dataset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+    train_ds = torchvision.datasets.MNIST(root='./data', train=True,
+                                          download=True, transform=transform)
+    train_loader = torch.utils.data.DataLoader(train_ds, batch_size=64, shuffle=True)
 
-    # Train and quantize model
     model = FCNet()
-    model = prepare_model(model, qconfig='fbgemm')
-    train_model(model, train_loader)
+    model.qconfig = torch.quantization.get_default_qat_qconfig('fbgemm')
+    model = prepare_qat(model)
 
-    # Convert to quantized model
-    model.eval()
-    quantized_model = convert(model)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 
-    torch.save({
-        'model_state_dict': quantized_model.state_dict()
-    }, 'qat_model.pt')
-
-    # Save test data
-    test_images, test_labels = next(iter(test_loader))
-    test_images = test_images[:5].view(-1, 784)
-    scale = 255 / 1.0
-    zero_point = -128
-    test_images_int8 = torch.clamp(torch.round(test_images * scale + zero_point), -128, 127).to(torch.int8).numpy()
-    test_labels = test_labels[:5].numpy()
-    np.savez('mnist_test_data.npz', images=test_images_int8, labels=test_labels)
-
-    # Test accuracy
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for images, labels in test_loader:
+    print("Training begins")
+    model.train()
+    for epoch in range(5):                     # short training – enough for demo
+        for images, labels in train_loader:
             images = images.view(-1, 784)
-            outputs = model(images)
-            _, predicted = torch.max(outputs, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-    print(f'Test Accuracy: {100 * correct / total:.2f}%')
+            optimizer.zero_grad()
+            out = model(images)
+            loss = criterion(out, labels)
+            loss.backward()
+            optimizer.step()
 
-if __name__ == "__main__":
-    main()
+    model.eval()
+    print("Training over")
+    return convert(model)
+
+@cocotb.test()
+async def tpu_matmul_test(dut):
+    # build model
+    model = get_quantized_model()
+
+    # compile it with backend
+    from torch_backend import make_backend
+    backend = make_backend(dut)                 
+    compiled_model = torch.compile(model, backend=backend)
+
+    # Load a few samples
+    transform = transforms.Compose([transforms.ToTensor()])
+    test_ds = torchvision.datasets.MNIST(root='./data', train=False,
+                                         download=True, transform=transform)
+    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=5, shuffle=False)
+    images, labels = next(iter(test_loader))
+    images = images.view(-1, 784)  # (5, 784)
+
+    # Run model on DUT
+    with torch.no_grad():
+        dut_out = compiled_model(images)       # goes through the systolic array
+
+    # Run the good CPU model
+    cpu_out = model(images)
+
+    # Compare
+    diff = (dut_out - cpu_out).abs()
+    max_err = diff.max().item()
+    assert max_err < 2.0, f"Max error {max_err} too large!"
+
+    print(f"Test passed – max error = {max_err:.3f}")
