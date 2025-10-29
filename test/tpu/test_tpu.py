@@ -4,6 +4,8 @@ from cocotb.triggers import ClockCycles, RisingEdge
 import numpy as np
 from cocotb.utils import get_sim_time
 import itertools
+import torch
+from torch._dynamo import allow_in_graph
 
 async def reset_dut(dut):
     dut.ena.value = 1
@@ -125,7 +127,8 @@ async def accumulate_matrix_output(dut, results_large, i, j, transpose=0, A_bloc
 
     return combined_outputs
 
-async def matmul(dut, A, B, transpose=False, relu=False):
+@allow_in_graph
+async def matmul(dut, A, B, transpose=False, relu=False, is_torch=False):
     """
     Fully pipelined systolic matrix multiplication using 2x2 blocks.
     Accumulates partial results across k dimension for each (i,j) tile.
@@ -144,11 +147,14 @@ async def matmul(dut, A, B, transpose=False, relu=False):
     n_bp = ((n_b + 1) // 2) * 2
     p_p = ((p + 1) // 2) * 2
 
-    A_padded = np.zeros((m_p, n_p), dtype=int)
-    B_padded = np.zeros((n_bp, p_p), dtype=int)
+    A_padded = torch.zeros((m_p, n_p), dtype=torch.int8, device=A.device) if is_torch else np.zeros((m_p, n_p), dtype=int)
+    B_padded = torch.zeros((n_bp, p_p), dtype=torch.int8, device=B.device) if is_torch else np.zeros((n_bp, p_p), dtype=int)
     A_padded[:m, :n] = A
     B_padded[:n_b, :p] = B
-    results_large = np.zeros((m_p, n_bp), dtype=int) if transpose else np.zeros((m_p, p_p), dtype=int)
+    if is_torch:
+        results_large = torch.zeros((m_p, n_bp), dtype=torch.int32, device=A.device) if transpose else torch.zeros((m_p, p_p), dtype=torch.int32, device=A.device)
+    else:
+        results_large = np.zeros((m_p, n_bp), dtype=int) if transpose else np.zeros((m_p, p_p), dtype=int)
 
     # Generate tile coordinates (i, j, k)
     if transpose:
@@ -193,7 +199,10 @@ async def matmul(dut, A, B, transpose=False, relu=False):
 
     # Apply ReLU if enabled
     if relu:
-        results_large = np.maximum(results_large, 0)
+        if is_torch:
+            results = torch.clamp(results, min=0)
+        else:
+            results_large = np.maximum(results_large, 0)
 
     return results_large[:m, :n_b] if transpose else results_large[:m, :p]
 

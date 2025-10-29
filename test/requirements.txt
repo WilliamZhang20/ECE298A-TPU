@@ -4,3 +4,5 @@ numpy==2.1.3
 torch
 torchvision
 pyuvm
+torchao
+executorch
