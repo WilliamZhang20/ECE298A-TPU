@@ -5,7 +5,6 @@ import numpy as np
 from cocotb.utils import get_sim_time
 import itertools
 import torch
-from torch._dynamo import allow_in_graph
 
 async def reset_dut(dut):
     dut.ena.value = 1
@@ -127,7 +126,6 @@ async def accumulate_matrix_output(dut, results_large, i, j, transpose=0, A_bloc
 
     return combined_outputs
 
-@allow_in_graph
 async def matmul(dut, A, B, transpose=False, relu=False, is_torch=False):
     """
     Fully pipelined systolic matrix multiplication using 2x2 blocks.
@@ -149,6 +147,7 @@ async def matmul(dut, A, B, transpose=False, relu=False, is_torch=False):
 
     A_padded = torch.zeros((m_p, n_p), dtype=torch.int8, device=A.device) if is_torch else np.zeros((m_p, n_p), dtype=int)
     B_padded = torch.zeros((n_bp, p_p), dtype=torch.int8, device=B.device) if is_torch else np.zeros((n_bp, p_p), dtype=int)
+    
     A_padded[:m, :n] = A
     B_padded[:n_b, :p] = B
     if is_torch:
