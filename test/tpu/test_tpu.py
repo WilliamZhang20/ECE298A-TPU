@@ -177,6 +177,7 @@ async def matmul(dut, A, B, transpose=False, relu=False, is_torch=False):
     i0, j0, k0 = tile_coords[0]
     A_block = A_padded[i0:i0+2, k0:k0+2].flatten().tolist()
     B_block = B_padded[k0:k0+2, j0:j0+2].flatten().tolist()
+
     await load_matrix(dut, A_block, transpose=0, relu=relu)
     await load_matrix(dut, B_block, transpose=transpose, relu=relu)
 

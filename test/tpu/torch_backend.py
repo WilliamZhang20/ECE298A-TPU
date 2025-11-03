@@ -6,6 +6,9 @@ from torch.library import custom_op, register_fake
 from torch import Tensor
 from typing import Optional
 import asyncio
+import cocotb
+from cocotb.triggers import RisingEdge
+import concurrent
 
 dut = None  # Global variable to hold the DUT reference
 
@@ -13,10 +16,15 @@ dut = None  # Global variable to hold the DUT reference
 def tpu_matmul(a: Tensor, b: Tensor, bias: Optional[Tensor] = None) -> Tensor:
     a_q = a.clamp(-128, 127).to(torch.int8)
     b_q = b.clamp(-128, 127).to(torch.int8)
-    loop = asyncio.get_event_loop()
-    async def _coro():
-        return await matmul(dut, a_q, b_q, transpose=True, is_torch=True)
-    result = loop.run_until_complete(_coro())
+    future = concurrent.futures.Future()
+    async def wrapper():
+        try:
+            result = await matmul(dut, a_q, b_q, transpose=True, is_torch=True)
+            future.set_result(result)
+        except Exception as e:
+            future.set_exception(e)
+    cocotb.start_soon(wrapper())
+    result = future.result()
     if bias is not None:
         result = result + bias.round().to(torch.int32)
     return result
