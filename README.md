@@ -1,20 +1,28 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# Tiny Tapeout Verilog Tensor Processing Unit
+# Tiny Tapeout Verilog Processing Unit
 
 - [Read the documentation for project](docs/info.md)
 
-## Overview: Verilog Matrix Multiply Accelerator
+## Overview
 
-This project implements a small-scale, hardware-efficient Tensor Processing Unit (TPU) that performs 2×2 signed matrix multiplications using a systolic array of Multiply-Accumulate (MAC) units. It is designed in Verilog and deployable via the Tiny Tapeout ASIC flow.
+This project implements a small-scale, hardware-efficient Tensor Processing Unit (TPU) that performs 2×2 matrix multiplications using a systolic array of Multiply-Accumulate (MAC) units. It is designed in Verilog and deployable via the Tiny Tapeout ASIC flow.
 
-## Key Features
+Hardware design files are in the `./src` folder, while the ML inference setup is inside `./test/tpu`.
+
+## Hardware Features
 
 - **Systolic Array:** A 2×2 grid of MAC units propagates data left-to-right and top-to-bottom, emulating a systolic matrix multiplication engine.
 - **Signed 8-bit Inputs, 16-bit Outputs:** Handles signed integers (-128 to 127) and accumulates products in 16-bit precision.
 - **Streaming Input/Output:** Supports pipelined loading and output to achieve >99.8M operations/sec.
 - **Control FSM:** Automates input loading, matrix multiplication timing, and result collection.
 - **Optional Features:** On-chip fused matrix transpose (`Bᵀ`) and ReLU activation.
+
+## Machine Learning Ecosystem
+
+- **Accurate Low-Precision Training**: since the chip only runs on 8-bit arithmetic but training needs higher preciison I run Quantization-Aware Training, simulating the quantization noise from 32-bit float to 8-bit integer. This allows minimal accuracy loss during quantization.
+  - The process is made easier with TorchAO inserting quantization stubs automatically, and ExecuTorch handling fast quantization and low-precision training.
+- **Simplified Model Deployment**: rather than run inference by calling the chip's `matmul` kernel manually while training in a separate `torch.nn` module, a PyTorch compiler backend unifies the process in `torch.nn`. One can train the model using the module, call `torch.compile` with a custom backend, and run inference with `model(input)`. 
 
 ---
 
