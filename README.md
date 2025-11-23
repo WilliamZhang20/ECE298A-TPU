@@ -20,8 +20,8 @@ Hardware design files are in the `./src` folder, while the ML inference setup is
 
 ## Machine Learning Ecosystem
 
-- **Accurate Low-Precision Training**: since the chip only runs on 8-bit arithmetic but training needs higher preciison I run Quantization-Aware Training, simulating the quantization noise from 32-bit float to 8-bit integer. This allows minimal accuracy loss during quantization.
-  - The process is made easier with TorchAO inserting quantization stubs automatically, and ExecuTorch handling fast quantization and low-precision training.
+- **Accurate Low-Precision Training**: since the chip only runs on 8-bit arithmetic but training needs higher precision, I run Quantization-Aware Training, simulating the quantization noise from 32-bit float to 8-bit integer during. This allows minimal accuracy loss during inference.
+  - The process is made easier with TorchAO inserting quantization stubs automatically, and ExecuTorch handling fast quantization into INT8 XNNPack operators and low-precision training.
 - **Simplified Model Deployment**: rather than run inference by calling the chip's `matmul` kernel manually while training in a separate `torch.nn` module, a PyTorch compiler backend unifies the process in `torch.nn`. One can train the model using the module, call `torch.compile` with a custom backend, and run inference with `model(input)`. 
 
 ---

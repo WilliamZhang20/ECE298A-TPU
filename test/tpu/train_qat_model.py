@@ -37,8 +37,6 @@ class FCNet(nn.Module):
         return x
     
 def get_quantized_model():
-    torch.backends.quantized.engine = 'fbgemm'
-
     transform = transforms.Compose([transforms.ToTensor()])
     train_ds = torchvision.datasets.MNIST(root='./data', train=True,
                                           download=True, transform=transform)
@@ -73,7 +71,7 @@ def get_quantized_model():
     optimizer = torch.optim.SGD(prepared_model.parameters(), lr=0.01, momentum=0.9)
     
     prepared_model = move_exported_model_to_train(prepared_model)
-    for epoch in range(2): # Reduced epochs for demo
+    for epoch in range(10):
         for images, labels in train_loader:
             optimizer.zero_grad()
             out = prepared_model(images) # Input is 1x1x28x28, the graph handles the flatten.
@@ -112,28 +110,32 @@ async def tpu_torch_test(dut):
     transform = transforms.Compose([transforms.ToTensor()])
     test_ds = torchvision.datasets.MNIST(root='./data', train=False,
                                          download=True, transform=transform)
-    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=5, shuffle=False)
+    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False)
 
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
 
-    image, label = next(iter(test_loader))
+    for i, (image, label) in enumerate(test_loader):
+        if i >= 5:
+            break
+        # RUN INFERENCE IN SEPARATE THREAD
+        import concurrent.futures
+        from cocotb.triggers import Timer
 
-    # RUN INFERENCE IN SEPARATE THREAD
-    import concurrent.futures
-    from cocotb.triggers import Timer
+        def run_inference():
+            with torch.no_grad():
+                return compiled_model(image)
 
-    def run_inference():
-        with torch.no_grad():
-            return compiled_model(image)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(run_inference)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(run_inference)
+            # POLL SIMULATOR WHILE WAITING
+            while not future.done():
+                await Timer(10, units='ns')  # Keep cocotb alive
 
-        # POLL SIMULATOR WHILE WAITING
-        while not future.done():
-            await Timer(10, units='ns')  # Keep cocotb alive
+            dut_out = future.result()
 
-        dut_out = future.result()
+            print("Predicted Label:", torch.argmax(dut_out, dim=1).item())
+            print("Actual label:", label.item())
 
     print("TEST PASSED")
