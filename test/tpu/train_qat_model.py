@@ -14,7 +14,7 @@ from executorch.backends.xnnpack.quantizer.xnnpack_quantizer import (
   get_symmetric_quantization_config,
   XNNPACKQuantizer,
 )
-
+from test_tpu import reset_dut
 import cocotb
 from cocotb.clock import Clock
 import numpy as np
@@ -35,7 +35,18 @@ class FCNet(nn.Module):
         x = self.relu(x)
         x = self.fc2(x)
         return x
-    
+
+def compute_accuracy(model, dataloader):
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for images, labels in dataloader:
+            outputs = model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+    return correct / total
+
 def get_quantized_model():
     transform = transforms.Compose([transforms.ToTensor()])
     train_ds = torchvision.datasets.MNIST(root='./data', train=True,
@@ -70,18 +81,22 @@ def get_quantized_model():
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(prepared_model.parameters(), lr=0.01, momentum=0.9)
     
-    prepared_model = move_exported_model_to_train(prepared_model)
-    for epoch in range(10):
+    for epoch in range(3):
+        prepared_model = move_exported_model_to_train(prepared_model)
+
         for images, labels in train_loader:
             optimizer.zero_grad()
-            out = prepared_model(images) # Input is 1x1x28x28, the graph handles the flatten.
+            out = prepared_model(images)
             loss = criterion(out, labels)
             loss.backward()
             optimizer.step()
 
+        # ---- Accuracy after epoch ----
+        prepared_model = move_exported_model_to_eval(prepared_model)
+        acc = compute_accuracy(prepared_model, train_loader)
+        print(f"Epoch {epoch+1} training accuracy: {acc:.4f}")
+
     print("Training over")
-    
-    prepared_model = move_exported_model_to_eval(prepared_model)
 
     # --- FULL TORCHAO PT2E Convert Step ---
     print("Converting prepared model to quantized model...")
@@ -98,6 +113,7 @@ async def tpu_torch_test(dut):
     model = get_quantized_model()
     clock = Clock(dut.clk, 20, units="ns")
     cocotb.start_soon(clock.start())
+    await reset_dut(dut)
 
     # compile it with backend
     from torch_backend import make_backend
