@@ -3,6 +3,7 @@
 # Tiny Tapeout Tensor Processing Unit
 
 - [Read the documentation for project](docs/info.md)
+- To see an architectural redesign, please visit [this](https://github.com/WilliamZhang20/TPUv2) repository.
 
 ## Overview
 
