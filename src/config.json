@@ -28,7 +28,13 @@
   "GRT_RESIZER_DESIGN_OPTIMIZATIONS": 1,
 
   "//": "Increase setup margin to encourage Resizer to be more aggressive with upsizing/buffering.",
-  "PL_RESIZER_SETUP_SLACK_MARGIN": 0.7,
+  "PL_RESIZER_SETUP_SLACK_MARGIN": 1.0,
+
+  "//": "Allow Resizer to optimize during synthesis for a better starting point.",
+  "SYN_USE_RESIZER_OPTIMIZATION": 1,
+
+  "//": "Increase optimization iterations to fix persistent violations.",
+  "GRT_RESIZER_TIMING_OPTIMIZATION_ITERATIONS": 5,
 
   "//": "Enable antenna diode insertion for fixing antenna ratio violations",
   "DIODE_INSERTION_STRATEGY": 4,
