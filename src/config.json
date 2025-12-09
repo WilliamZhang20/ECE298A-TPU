@@ -33,9 +33,6 @@
   "//": "Allow Resizer to optimize during synthesis for a better starting point.",
   "SYN_USE_RESIZER_OPTIMIZATION": 1,
 
-  "//": "Increase optimization iterations to fix persistent violations.",
-  "GRT_RESIZER_TIMING_OPTIMIZATION_ITERATIONS": 5,
-
   "//": "Enable antenna diode insertion for fixing antenna ratio violations",
   "DIODE_INSERTION_STRATEGY": 4,
   "ANTENNA_DIODE_CELL": "sky130_fd_sc_hd__diode_2",
