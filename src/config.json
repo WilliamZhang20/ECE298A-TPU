@@ -13,7 +13,7 @@
 
   "//": "PL_TARGET_DENSITY_PCT - You can increase this if Global Placement fails with error GPL-0302.",
   "//": "Users have reported that values up to 80 worked well for them.",
-  "PL_TARGET_DENSITY_PCT": 78,
+  "PL_TARGET_DENSITY_PCT": 85,
 
   "//": "CLOCK_PERIOD - Increase this in case you are getting setup time violations.",
   "//": "The value is in nanoseconds, so 20ns == 50MHz.",
@@ -29,9 +29,6 @@
 
   "//": "Increase setup margin to encourage Resizer to be more aggressive with upsizing/buffering.",
   "PL_RESIZER_SETUP_SLACK_MARGIN": 1.0,
-
-  "//": "Allow Resizer to optimize during synthesis for a better starting point.",
-  "SYN_USE_RESIZER_OPTIMIZATION": 1,
 
   "//": "Enable antenna diode insertion for fixing antenna ratio violations",
   "DIODE_INSERTION_STRATEGY": 4,
