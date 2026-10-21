@@ -226,19 +226,113 @@ async def conv3d(
     return out.numpy() if was_numpy else out
 
 
+def _numel(labels, sizes):
+    """Number of elements in a term with the given labels."""
+    return prod(sizes[l] for l in labels)
+
+
+class _Plan:
+    """One planned contraction step: terms[i] @ terms[j] plus optional
+    ones-column reductions of labels only one side has and nobody needs."""
+
+    def __init__(self, cost, result_numel, pre_l, pre_r, drop_l, drop_r,
+                 batch, m_labels, k_labels, n_labels):
+        self.cost = cost                  # estimated hardware MACs
+        self.result_numel = result_numel  # tiebreak: smaller intermediate
+        self.pre_l, self.pre_r = pre_l, pre_r        # reduce this side first?
+        self.drop_l, self.drop_r = drop_l, drop_r    # labels to sum out
+        self.batch = batch                # shared labels still needed later
+        self.m_labels = m_labels          # lhs output rows (post-reduction)
+        self.k_labels = k_labels          # contracted lhs labels
+        self.n_labels = n_labels          # rhs output cols (post-reduction)
+
+
+def _plan_pair(terms, i, j, out_labels, sizes):
+    """Plan one contraction step: terms[i] @ terms[j].
+
+    Greedy opt_einsum-style step: group the two terms' labels into
+    batch/M/K/N axes, then decide per side whether the labels that only
+    that term carries and that neither the output nor any remaining term
+    needs are cheaper to sum out with a ones-column tile before the
+    matmul or to carry through it.
+    """
+    lhs_labels, _ = terms[i]
+    rhs_labels, _ = terms[j]
+    needed = set(out_labels)
+    for t, (labels, _) in enumerate(terms):
+        if t != i and t != j:
+            needed.update(labels)
+    shared = set(lhs_labels) & set(rhs_labels)
+
+    batch = [l for l in lhs_labels if l in shared and l in needed]
+    m_labels = [l for l in lhs_labels if l not in shared]
+    k_labels = [l for l in lhs_labels if l in shared and l not in needed]
+    n_labels = [l for l in rhs_labels if l not in shared]
+    drop_l = [l for l in m_labels if l not in needed]
+    drop_r = [l for l in n_labels if l not in needed]
+
+    b = prod(sizes[l] for l in batch)
+    m = prod(sizes[l] for l in m_labels)
+    k = prod(sizes[l] for l in k_labels)
+    n = prod(sizes[l] for l in n_labels)
+    fl = prod(sizes[l] for l in drop_l)
+    fr = prod(sizes[l] for l in drop_r)
+
+    def step_cost(pre_l, pre_r):
+        """Estimated hardware MACs for this pair under a reduce choice."""
+        ml = m // fl if pre_l else m
+        nr = n // fr if pre_r else n
+        c = b * ml * k * nr                          # the matmul tiles
+        if (not pre_l and drop_l) or (not pre_r and drop_r):
+            c += b * ml * nr                         # carried labels summed out later
+        if pre_l:
+            c += _numel(lhs_labels, sizes)           # ones-column tile over the lhs
+        if pre_r:
+            c += _numel(rhs_labels, sizes)           # ones-column tile over the rhs
+        return c
+
+    # Cheapest reduce choice; ties keep the carry option (fewer matmul calls).
+    pre_l, pre_r = min(
+        ((p, q) for p in (False, True) for q in (False, True)),
+        key=lambda pq: step_cost(*pq),
+    )
+    if pre_l:
+        m_labels = [l for l in m_labels if l not in set(drop_l)]
+    if pre_r:
+        n_labels = [l for l in n_labels if l not in set(drop_r)]
+    result_numel = b * _numel(m_labels, sizes) * _numel(n_labels, sizes)
+    return _Plan(step_cost(pre_l, pre_r), result_numel, pre_l, pre_r,
+                 drop_l, drop_r, batch, m_labels, k_labels, n_labels)
+
+
+async def _reduce_labels(dut, labels, t, drop, sizes):
+    """Sum a term out over ``drop`` labels with a ones-column matmul tile."""
+    drop = set(drop)
+    keep = [l for l in labels if l not in drop]
+    gone = [l for l in labels if l in drop]
+    m, k = _numel(keep, sizes), _numel(gone, sizes)
+    A = t.permute([labels.index(l) for l in keep + gone]).reshape(m, k)
+    ones = torch.ones((k, 1), dtype=torch.int8)
+    out = await matmul(dut, _hw_int8(A), ones)
+    return "".join(keep), out.reshape([sizes[l] for l in keep])
+
+
 async def einsum(dut, equation: str, *operands: Array):
     """Evaluate an einsum by lowering supported contractions to matmul tiles.
 
     ``dut`` is passed to the same async harness used by ``test_tpu.matmul``.
 
     Supported equations use an explicit ``->`` output, no ellipsis and no
-    repeated subscripts inside a single operand.  Terms are contracted left
-    to right: shared subscripts that neither the output nor a remaining term
-    needs become the matmul K axis, shared subscripts that are still needed
-    become batched matmuls (one tile pair per batch index), unshared
-    subscripts become the M/N axes (an empty K group lowers to an
-    outer-product tile), and subscripts the output never mentions are summed
-    out with a ones-column matmul tile.
+    repeated subscripts inside a single operand.  The contraction path is
+    planned greedily (a la opt_einsum) instead of left to right: every step
+    costs every remaining term pair in hardware MACs and takes the
+    cheapest.  Labels that only one term carries and that nobody needs
+    anymore are summed out with a ones-column tile before the matmul when
+    that is cheaper than carrying them through it; shared labels that are
+    still needed become batched matmuls (one tile pair per batch index);
+    unshared labels become the M/N axes (an empty K group lowers to an
+    outer-product tile).  Results are exact: integer sums commute, so the
+    planned order only changes how many tiles run, never the values.
     """
     eq = equation.replace(" ", "")
     if "..." in eq:
@@ -279,61 +373,62 @@ async def einsum(dut, equation: str, *operands: Array):
     ]
 
     while len(terms) > 1:
-        lhs_labels, lhs_tensor = terms[0]
-        rhs_labels, rhs_tensor = terms[1]
-        shared = set(lhs_labels) & set(rhs_labels)
+        # 2. Pick the cheapest pair to contract (greedy path): try every
+        # remaining pair and keep the one whose plan costs the fewest
+        # hardware MACs (ties prefer the smaller intermediate).
+        best = None
+        for i in range(len(terms) - 1):
+            for j in range(i + 1, len(terms)):
+                plan = _plan_pair(terms, i, j, out_labels, sizes)
+                if best is None or (plan.cost, plan.result_numel) < best[0]:
+                    best = ((plan.cost, plan.result_numel), i, j, plan)
+        _, i, j, plan = best
+        lhs_labels, lhs_tensor = terms[i]
+        rhs_labels, rhs_tensor = terms[j]
 
-        # 2. Decide which shared labels can be contracted.
-        # A label must not be needed by the output or remaining terms.
-        needed_later = set(out_labels)
-        for labels, _ in terms[2:]:
-            needed_later.update(labels)
-        contract = shared - needed_later
-
-        # 3. Arrange dimensions into M, K, N groups.  Shared labels that are
-        # still needed become batch dims (same order on both sides), unshared
-        # lhs/rhs labels become the M/N dims, and contracted labels are the
-        # K dims.  An empty group is a size-1 axis, so a pair with nothing to
-        # contract lowers to an outer-product tile.
-        batch = [l for l in lhs_labels if l in shared and l not in contract]
-        m_labels = [l for l in lhs_labels if l not in shared]
-        k_labels = [l for l in lhs_labels if l in contract]
-        n_labels = [l for l in rhs_labels if l not in shared]
+        # 3. Sum out droppable labels the plan decided are cheaper to
+        # reduce now than to carry through the matmul (x @ 1 == sum(x)).
+        if plan.pre_l:
+            lhs_labels, lhs_tensor = await _reduce_labels(
+                dut, lhs_labels, lhs_tensor, plan.drop_l, sizes
+            )
+        if plan.pre_r:
+            rhs_labels, rhs_tensor = await _reduce_labels(
+                dut, rhs_labels, rhs_tensor, plan.drop_r, sizes
+            )
 
         # 4. Transpose and reshape each tensor into stacked (M, K)/(K, N)
-        # matrices, one tile pair per batch index.
-        A = lhs_tensor.permute([lhs_labels.index(l) for l in batch + m_labels + k_labels])
-        B = rhs_tensor.permute([rhs_labels.index(l) for l in batch + k_labels + n_labels])
-        b = prod(sizes[l] for l in batch)
-        m = prod(sizes[l] for l in m_labels)
-        k = prod(sizes[l] for l in k_labels)
-        n = prod(sizes[l] for l in n_labels)
-        A = A.reshape(b, m, k)
-        B = B.reshape(b, k, n)
+        # matrices, one tile pair per batch index (batch labels that are
+        # still needed later; an empty group is a size-1 axis, so a pair
+        # with nothing to contract lowers to an outer-product tile).
+        A = lhs_tensor.permute(
+            [lhs_labels.index(l) for l in plan.batch + plan.m_labels + plan.k_labels]
+        )
+        B = rhs_tensor.permute(
+            [rhs_labels.index(l) for l in plan.batch + plan.k_labels + plan.n_labels]
+        )
+        b = prod(sizes[l] for l in plan.batch)
+        m = _numel(plan.m_labels, sizes)
+        k = _numel(plan.k_labels, sizes)
+        n = _numel(plan.n_labels, sizes)
+        A = _hw_int8(A.reshape(b, m, k))   # saturate once for the whole batch
+        B = _hw_int8(B.reshape(b, k, n))
 
-        # 5. Call the matmul implementation (tiles saturate to int8).
-        blocks = [await matmul(dut, _hw_int8(A[i]), _hw_int8(B[i])) for i in range(b)]
+        # 5. Call the matmul implementation once per batch index.
+        blocks = [await matmul(dut, A[a], B[a]) for a in range(b)]
 
-        # 6. Reshape the result and assign its labels.
-        new_labels = "".join(batch + m_labels + n_labels)
-        new_tensor = torch.stack(blocks).reshape([sizes[l] for l in new_labels])
-
-        # 7. Replace the two terms with the new term.
-        terms = [[new_labels, new_tensor]] + terms[2:]
+        # 6/7. Reshape the result, assign its labels, and replace the two
+        # terms with the new term.
+        new_labels = "".join(plan.batch + plan.m_labels + plan.n_labels)
+        terms[i] = [new_labels, torch.stack(blocks).reshape([sizes[l] for l in new_labels])]
+        del terms[j]
 
     # Subscripts the output never asked for are summed out with a
     # ones-column matmul tile (x @ 1 == sum(x)).
     labels, out = terms[0]
-    out_set = set(out_labels)
-    keep = [l for l in labels if l in out_set]
-    drop = [l for l in labels if l not in out_set]
+    drop = [l for l in labels if l not in set(out_labels)]
     if drop:
-        A = out.permute([labels.index(l) for l in keep + drop]).reshape(
-            prod(sizes[l] for l in keep), prod(sizes[l] for l in drop)
-        )
-        ones = torch.ones((prod(sizes[l] for l in drop), 1), dtype=torch.int8)
-        out = (await matmul(dut, _hw_int8(A), ones)).reshape([sizes[l] for l in keep])
-        labels = "".join(keep)
+        labels, out = await _reduce_labels(dut, labels, out, drop, sizes)
 
     # Relabel into the requested output order.
     if out_labels and labels != out_labels:
