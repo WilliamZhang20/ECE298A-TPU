@@ -126,12 +126,26 @@ async def accumulate_matrix_output(dut, results_large, i, j, transpose=0, A_bloc
 
     return combined_outputs
 
-async def matmul(dut, A, B, transpose=False, relu=False, is_torch=False):
+async def matmul(dut, A, B, transpose=False, relu=False):
     """
     Fully pipelined systolic matrix multiplication using 2x2 blocks.
     Accumulates partial results across k dimension for each (i,j) tile.
     Loads A and B in parallel with reading previous output.
+
+    A and B may be NumPy arrays or torch tensors (both of the same kind);
+    the result is returned in whichever library the inputs came from.
     """
+    is_torch = isinstance(A, torch.Tensor)
+    if is_torch != isinstance(B, torch.Tensor):
+        raise TypeError("A and B must both be NumPy arrays or both be torch tensors")
+
+    if is_torch:
+        def zeros(shape, dtype):
+            return torch.zeros(shape, dtype=dtype, device=A.device)
+    else:
+        def zeros(shape, dtype):
+            return np.zeros(shape, dtype=dtype)
+
     m, n = A.shape
     n_b, p = B.shape
     if (transpose):
@@ -145,15 +159,13 @@ async def matmul(dut, A, B, transpose=False, relu=False, is_torch=False):
     n_bp = ((n_b + 1) // 2) * 2
     p_p = ((p + 1) // 2) * 2
 
-    A_padded = torch.zeros((m_p, n_p), dtype=torch.int8, device=A.device) if is_torch else np.zeros((m_p, n_p), dtype=int)
-    B_padded = torch.zeros((n_bp, p_p), dtype=torch.int8, device=B.device) if is_torch else np.zeros((n_bp, p_p), dtype=int)
-    
+    A_padded = zeros((m_p, n_p), torch.int8 if is_torch else int)
+    B_padded = zeros((n_bp, p_p), torch.int8 if is_torch else int)
+
     A_padded[:m, :n] = A
     B_padded[:n_b, :p] = B
-    if is_torch:
-        results_large = torch.zeros((m_p, n_bp), dtype=torch.int32, device=A.device) if transpose else torch.zeros((m_p, p_p), dtype=torch.int32, device=A.device)
-    else:
-        results_large = np.zeros((m_p, n_bp), dtype=int) if transpose else np.zeros((m_p, p_p), dtype=int)
+
+    results_large = zeros((m_p, n_bp if transpose else p_p), torch.int32 if is_torch else int)
 
     # Generate tile coordinates (i, j, k)
     if transpose:
@@ -199,10 +211,7 @@ async def matmul(dut, A, B, transpose=False, relu=False, is_torch=False):
 
     # Apply ReLU if enabled
     if relu:
-        if is_torch:
-            results = torch.clamp(results, min=0)
-        else:
-            results_large = np.maximum(results_large, 0)
+        results_large = torch.clamp(results_large, min=0) if is_torch else np.maximum(results_large, 0)
 
     return results_large[:m, :n_b] if transpose else results_large[:m, :p]
 

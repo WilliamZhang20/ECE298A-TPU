@@ -46,7 +46,7 @@ def tpu_matmul(a_q: Tensor, b_q: Tensor, bias: Optional[Tensor] = None,
     async def wrapper():
         try:
             await reset_dut(dut)
-            result_int32 = await matmul(dut, a_hw, b_hw, transpose=True, is_torch=True)
+            result_int32 = await matmul(dut, a_hw, b_hw, transpose=True)
             future.set_result(result_int32)
         except Exception as e:
             future.set_exception(e)
