@@ -44,7 +44,7 @@ endif
 # Allow sharing configuration between design and testbench via `include`:
 COMPILE_ARGS 		+= -I$(SRC_DIR)
 
-.PHONY: all test-uvm test-memory test-systolic-array test-control-unit test-nn test-mmu-feeder test-top
+.PHONY: all test-uvm test-memory test-systolic-array test-control-unit test-nn test-mmu-feeder test-top test-kernels
 
 all:
 	$(MAKE) test-uvm
@@ -74,6 +74,16 @@ test-top:
 		PYTHONPATH=$(WAVES_ROOT)/tpu \
 		WAVES_DIR=$(WAVES_ROOT)/tpu/wave \
 		COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/tpu/wave/tpu_tb_$(TIMESTAMP).vcd\""'
+
+test-kernels:
+	$(MAKE) clean
+	$(MAKE) sim \
+		TOPLEVEL=tb \
+		MODULE=test_kernels \
+		VERILOG_SOURCES="$(WAVES_ROOT)/tpu/tb.v $(addprefix $(SRC_DIR)/,tpu.v delay_cell.v systolic_array_2x2.v PE.v mmu_feeder.v control_unit.v memory.v)" \
+		PYTHONPATH=$(WAVES_ROOT)/tpu \
+		WAVES_DIR=$(WAVES_ROOT)/tpu/wave \
+		COMPILE_ARGS='$(COMPILE_ARGS) -DVCD_PATH="\"$(WAVES_ROOT)/tpu/wave/kernels_tb_$(TIMESTAMP).vcd\""'
 
 test-nn:
 	$(MAKE) clean
